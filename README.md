@@ -1,5 +1,11 @@
 # claude-session-init
 
+[![Claude Code Skill](https://img.shields.io/badge/Claude_Code-Skill-8A2BE2)](https://github.com/anombyte93/claude-session-init)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/anombyte93/claude-session-init/blob/main/LICENSE)
+[![GitHub stars](https://img.shields.io/github/stars/anombyte93/claude-session-init)](https://github.com/anombyte93/claude-session-init/stargazers)
+[![GitHub last commit](https://img.shields.io/github/last-commit/anombyte93/claude-session-init)](https://github.com/anombyte93/claude-session-init/commits)
+[![GitHub issues](https://img.shields.io/github/issues/anombyte93/claude-session-init)](https://github.com/anombyte93/claude-session-init/issues)
+
 A Claude Code skill designed for vibe coders who have trouble organizing their folders and keeping track of their project state.
 
 The skill bootstraps structured session context for any project. Initializes a memory bank system with templates, organizes messy project roots into clean directory structures, and generates/updates `CLAUDE.md` files.
