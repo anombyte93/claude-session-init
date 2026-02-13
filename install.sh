@@ -11,6 +11,8 @@
 #   bash install.sh --revert                       # revert to v1
 #   bash install.sh --update                       # pull latest and reinstall
 #   bash install.sh --check-update                 # check for newer version
+#   bash install.sh --no-extras                    # skip bundled extra skills
+#   bash install.sh --all                          # install all extras without prompting
 # ============================================================================
 
 set -euo pipefail
@@ -216,8 +218,93 @@ install_plugin() {
     printf "\n"
 }
 
+install_extra_skills() {
+    # Discover and install bundled skills beyond /start
+    # $1 = src_dir (cloned repo), $2 = "all"|"ask"|"none"
+    local src_dir="$1"
+    local extras_mode="${2:-ask}"
+    local skills_base="${HOME}/.claude/skills"
+
+    if [[ "${extras_mode}" == "none" ]]; then return 0; fi
+
+    # Discover extra skills (everything in skills/ except start/)
+    local extras=()
+    local descriptions=()
+    if [[ -d "${src_dir}/skills" ]]; then
+        for skill_dir in "${src_dir}/skills"/*/; do
+            local skill_name; skill_name=$(basename "${skill_dir}")
+            if [[ "${skill_name}" == "start" ]]; then continue; fi
+            if [[ -f "${skill_dir}/SKILL.md" ]]; then
+                extras+=("${skill_name}")
+                # Extract description from YAML frontmatter
+                local desc; desc=$(sed -n 's/^description: *"\{0,1\}\(.*\)"\{0,1\}$/\1/p' "${skill_dir}/SKILL.md" | head -1)
+                descriptions+=("${desc:-No description}")
+            fi
+        done
+    fi
+
+    if [[ ${#extras[@]} -eq 0 ]]; then return 0; fi
+
+    printf "\n"
+    info "Bundled extra skills available:"
+    printf "\n"
+    for i in "${!extras[@]}"; do
+        printf "  ${BOLD}%d)${RESET} ${CYAN}/%s${RESET}\n" "$((i+1))" "${extras[$i]}"
+        printf "     %s\n" "${descriptions[$i]:0:100}"
+    done
+    printf "\n"
+
+    local install_extras=()
+
+    if [[ "${extras_mode}" == "all" ]]; then
+        install_extras=("${extras[@]}")
+        info "Installing all extra skills (--all)"
+    elif [[ -t 0 ]] && [[ -t 1 ]]; then
+        # Interactive — ask the user
+        printf "Install extra skills? [${BOLD}a${RESET}]ll / [${BOLD}n${RESET}]one / [${BOLD}s${RESET}]elect: "
+        local choice; read -r choice
+        case "${choice}" in
+            a|A|all|ALL|"")
+                install_extras=("${extras[@]}") ;;
+            n|N|none|NONE)
+                info "Skipping extra skills"
+                return 0 ;;
+            s|S|select|SELECT)
+                for i in "${!extras[@]}"; do
+                    printf "  Install ${CYAN}/%s${RESET}? [Y/n]: " "${extras[$i]}"
+                    local yn; read -r yn
+                    case "${yn}" in
+                        n|N|no|NO) ;;
+                        *) install_extras+=("${extras[$i]}") ;;
+                    esac
+                done ;;
+            *)
+                info "Skipping extra skills"
+                return 0 ;;
+        esac
+    else
+        # Non-interactive (piped via curl) — install all by default
+        install_extras=("${extras[@]}")
+        info "Installing all extra skills (non-interactive)"
+    fi
+
+    # Install selected extras
+    for skill_name in "${install_extras[@]}"; do
+        local target="${skills_base}/${skill_name}"
+        mkdir -p "${target}"
+        cp "${src_dir}/skills/${skill_name}/SKILL.md" "${target}/SKILL.md"
+        ok "Installed /${skill_name} to ${target}/"
+    done
+
+    if [[ ${#install_extras[@]} -gt 0 ]]; then
+        printf "\n"
+        ok "Installed ${#install_extras[@]} extra skill(s)"
+    fi
+}
+
 install_skill() {
     local target_version="${1:-v2}"
+    local extras_mode="${2:-ask}"
     local mode="install"
 
     info "Atlas Session Lifecycle — Skill Installer"
@@ -289,6 +376,11 @@ install_skill() {
         chmod +x "${SKILL_DIR}/install.sh"
     fi
 
+    # Offer extra bundled skills (v2 only)
+    if [[ "${target_version}" == "v2" ]]; then
+        install_extra_skills "${src_dir}" "${extras_mode}"
+    fi
+
     local timestamp; timestamp=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
     cat > "${SKILL_DIR}/.version" <<VEOF
 ${VERSION}
@@ -321,15 +413,17 @@ VEOF
 main() {
     local target_version="v2"
     local install_mode="skill"
+    local extras_mode="ask"
 
-    # Parse args — check for --plugin first
+    # Parse modifier flags first
     local args=()
     for arg in "$@"; do
-        if [[ "${arg}" == "--plugin" ]]; then
-            install_mode="plugin"
-        else
-            args+=("${arg}")
-        fi
+        case "${arg}" in
+            --plugin) install_mode="plugin" ;;
+            --no-extras) extras_mode="none" ;;
+            --all) extras_mode="all" ;;
+            *) args+=("${arg}") ;;
+        esac
     done
 
     case "${args[0]:-}" in
@@ -341,7 +435,7 @@ main() {
             if [[ "${install_mode}" == "plugin" ]]; then
                 install_plugin
             else
-                install_skill "v2"
+                install_skill "v2" "${extras_mode}"
             fi
             ;;
         --help|-h)
@@ -355,6 +449,8 @@ main() {
             printf "  --revert           Revert from v2 to v1 (skill mode only)\n"
             printf "  --update           Pull latest and reinstall\n"
             printf "  --check-update     Check for newer release\n"
+            printf "  --all              Install all bundled skills without prompting\n"
+            printf "  --no-extras        Skip bundled extra skills (only install /start)\n"
             printf "  -v                 Print version\n"
             printf "  --help             Show help\n"
             printf "\nExamples:\n"
@@ -368,7 +464,7 @@ main() {
             if [[ "${install_mode}" == "plugin" ]]; then
                 install_plugin
             else
-                install_skill "v2"
+                install_skill "v2" "${extras_mode}"
             fi
             check_update ;;
         --version)
@@ -376,7 +472,7 @@ main() {
             if [[ "${target_version}" != "v1" ]] && [[ "${target_version}" != "v2" ]]; then
                 die "Invalid version: ${target_version}. Use v1 or v2."
             fi
-            install_skill "${target_version}"
+            install_skill "${target_version}" "${extras_mode}"
             check_update ;;
         *)
             die "Unknown argument: ${args[0]} (try --help)" ;;
