@@ -1,23 +1,26 @@
 #!/usr/bin/env bash
 # ============================================================================
-# Universal Claude Code Skill Installer
+# Atlas Session Lifecycle — Installer
 # ============================================================================
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/anombyte93/claude-session-init/main/install.sh | bash
-#   bash install.sh                # fresh install (v2, default)
-#   bash install.sh --version v1   # install v1 (monolithic SKILL.md, no script)
-#   bash install.sh --version v2   # install v2 (SKILL.md + session-init.py)
-#   bash install.sh --revert       # revert from v2 to v1
-#   bash install.sh --check-update # check for newer version only
+#   curl -fsSL https://raw.githubusercontent.com/anombyte93/atlas-session-lifecycle/main/install.sh | bash
+#   curl -fsSL ... | bash -s -- --plugin          # install as Claude Code plugin
+#   bash install.sh                                # skill mode (default)
+#   bash install.sh --plugin                       # plugin mode
+#   bash install.sh --version v1                   # install v1 (legacy)
+#   bash install.sh --revert                       # revert to v1
+#   bash install.sh --update                       # pull latest and reinstall
+#   bash install.sh --check-update                 # check for newer version
 # ============================================================================
 
 set -euo pipefail
 
 REPO_OWNER="anombyte93"
-REPO_NAME="claude-session-init"
+REPO_NAME="atlas-session-lifecycle"
 SKILL_NAME="start"
-VERSION="3.0.0"
+VERSION="2.0.0"
 SKILL_DIR="${SKILL_DIR:-${HOME}/.claude/skills/${SKILL_NAME}}"
+PLUGIN_DIR="${HOME}/.claude/plugins/${REPO_NAME}"
 TEMPLATE_DIR="${HOME}/claude-session-init-templates"
 
 UPDATES_DIR="${HOME}/.config/claude-skills"
@@ -130,7 +133,7 @@ revert_to_v1() {
 
     # Install v1 SKILL.md
     cp "${src_dir}/v1/SKILL.md" "${SKILL_DIR}/SKILL.md"
-    ok "Installed v1 SKILL.md (867 lines, monolithic)"
+    ok "Installed v1 SKILL.md (monolithic)"
 
     # Remove session-init.py (v1 doesn't use it)
     if [[ -f "${SKILL_DIR}/session-init.py" ]]; then
@@ -155,11 +158,69 @@ VEOF
     printf "\n"
 }
 
+install_plugin() {
+    local mode="install"
+
+    info "Atlas Session Lifecycle — Plugin Installer"
+    info "Version: ${BOLD}v${VERSION}${RESET}"
+    printf "\n"; require_cmd git
+
+    if [[ -d "${PLUGIN_DIR}" ]]; then
+        mode="upgrade"
+        info "Existing plugin installation detected"
+        info "Mode: upgrade (pulling latest)"
+
+        cd "${PLUGIN_DIR}"
+        git fetch --quiet origin main 2>/dev/null || true
+        git reset --hard origin/main --quiet 2>/dev/null || {
+            warn "Git pull failed, doing fresh clone"
+            cd "${HOME}"
+            rm -rf "${PLUGIN_DIR}"
+            mode="install"
+        }
+
+        if [[ "${mode}" == "upgrade" ]]; then
+            local timestamp; timestamp=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+            ok "Updated plugin to latest (${timestamp})"
+            printf "\n"
+            printf "${GREEN}${BOLD}Successfully upgraded atlas-session-lifecycle plugin${RESET}\n"
+            printf "  Location: %s\n" "${PLUGIN_DIR}"
+            printf "\n"
+            info "To use: ${CYAN}/start${RESET}"
+            printf "\n"
+            return 0
+        fi
+    fi
+
+    if [[ "${mode}" == "install" ]]; then
+        info "Mode: fresh install"
+        mkdir -p "$(dirname "${PLUGIN_DIR}")"
+        git clone --quiet "${CLONE_URL}" "${PLUGIN_DIR}" 2>/dev/null \
+            || die "Failed to clone repository."
+        ok "Cloned plugin to ${PLUGIN_DIR}"
+    fi
+
+    # Also install templates to home dir fallback
+    if [[ -d "${PLUGIN_DIR}/templates" ]]; then
+        mkdir -p "${TEMPLATE_DIR}"
+        cp "${PLUGIN_DIR}/templates/"* "${TEMPLATE_DIR}/" 2>/dev/null || true
+        ok "Installed templates to ${TEMPLATE_DIR}/ (fallback)"
+    fi
+
+    printf "\n"
+    printf "${GREEN}${BOLD}Successfully installed atlas-session-lifecycle plugin${RESET}\n"
+    printf "  Location: %s\n" "${PLUGIN_DIR}"
+    printf "  Templates: %s\n" "${TEMPLATE_DIR}"
+    printf "\n"
+    info "To use: ${CYAN}/start${RESET}"
+    printf "\n"
+}
+
 install_skill() {
     local target_version="${1:-v2}"
     local mode="install"
 
-    info "Claude Code Skill Installer"
+    info "Atlas Session Lifecycle — Skill Installer"
     info "Skill: ${BOLD}${SKILL_NAME}${RESET} v${VERSION} (${target_version})"
     printf "\n"; require_cmd git
 
@@ -187,41 +248,36 @@ install_skill() {
     mkdir -p "${SKILL_DIR}"
 
     if [[ "${target_version}" == "v1" ]]; then
-        # ── v1 install: monolithic SKILL.md, no script ──
+        # v1 install: monolithic SKILL.md, no script
         if [[ -f "${src_dir}/v1/SKILL.md" ]]; then
             cp "${src_dir}/v1/SKILL.md" "${SKILL_DIR}/SKILL.md"
-            ok "Installed v1 SKILL.md (867 lines, monolithic)"
+            ok "Installed v1 SKILL.md (monolithic)"
         else
             die "v1/SKILL.md not found in repository."
         fi
-        # Remove session-init.py if present from previous v2 install
         if [[ -f "${SKILL_DIR}/session-init.py" ]]; then
             rm "${SKILL_DIR}/session-init.py"
             ok "Removed session-init.py (not used by v1)"
         fi
     else
-        # ── v2 install: slim SKILL.md + session-init.py ──
-        # Check for SKILL.md or start.md (legacy)
-        if [[ ! -f "${src_dir}/SKILL.md" ]] && [[ -f "${src_dir}/start.md" ]]; then
-            cp "${src_dir}/start.md" "${src_dir}/SKILL.md"
-        fi
-        if [[ ! -f "${src_dir}/SKILL.md" ]]; then
-            die "SKILL.md not found in repository."
-        fi
-        cp "${src_dir}/SKILL.md" "${SKILL_DIR}/SKILL.md"
-        ok "Installed v2 SKILL.md (203 lines, orchestrator)"
-
-        # Install session-init.py
-        if [[ -f "${src_dir}/session-init.py" ]]; then
-            cp "${src_dir}/session-init.py" "${SKILL_DIR}/session-init.py"
-            chmod +x "${SKILL_DIR}/session-init.py"
-            ok "Installed session-init.py (548 lines, 9 subcommands)"
+        # v2 install: skill from skills/start/, script from scripts/
+        if [[ -f "${src_dir}/skills/start/SKILL.md" ]]; then
+            cp "${src_dir}/skills/start/SKILL.md" "${SKILL_DIR}/SKILL.md"
+            ok "Installed SKILL.md (orchestrator)"
         else
-            die "session-init.py not found in repository. v2 requires this file."
+            die "skills/start/SKILL.md not found in repository."
+        fi
+
+        if [[ -f "${src_dir}/scripts/session-init.py" ]]; then
+            cp "${src_dir}/scripts/session-init.py" "${SKILL_DIR}/session-init.py"
+            chmod +x "${SKILL_DIR}/session-init.py"
+            ok "Installed session-init.py (backend)"
+        else
+            die "scripts/session-init.py not found in repository."
         fi
     fi
 
-    # Install templates (same for both versions)
+    # Install templates
     if [[ -d "${src_dir}/templates" ]]; then
         mkdir -p "${TEMPLATE_DIR}"
         cp "${src_dir}/templates/"* "${TEMPLATE_DIR}/" 2>/dev/null || true
@@ -258,44 +314,72 @@ VEOF
         printf "  Script: %s/session-init.py\n" "${SKILL_DIR}"
     fi
     printf "\n"
-    info "To use this skill in Claude Code:"
-    printf "  ${CYAN}/start${RESET}\n"
+    info "To use: ${CYAN}/start${RESET}"
     printf "\n"
 }
 
 main() {
     local target_version="v2"
+    local install_mode="skill"
 
-    case "${1:-}" in
+    # Parse args — check for --plugin first
+    local args=()
+    for arg in "$@"; do
+        if [[ "${arg}" == "--plugin" ]]; then
+            install_mode="plugin"
+        else
+            args+=("${arg}")
+        fi
+    done
+
+    case "${args[0]:-}" in
         --check-update|-u) check_update ;;
-        -v) echo "${SKILL_NAME} v${VERSION}" ;;
+        -v) echo "atlas-session-lifecycle v${VERSION}" ;;
         --revert) revert_to_v1 ;;
+        --update)
+            info "Updating atlas-session-lifecycle..."
+            if [[ "${install_mode}" == "plugin" ]]; then
+                install_plugin
+            else
+                install_skill "v2"
+            fi
+            ;;
         --help|-h)
             printf "Usage: %s [OPTIONS]\n" "${0##*/}"
+            printf "\n${BOLD}Atlas Session Lifecycle${RESET} — Session lifecycle management for Claude Code\n"
+            printf "\nInstall modes:\n"
+            printf "  (no args)          Install as skill to ~/.claude/skills/start/\n"
+            printf "  --plugin           Install as plugin to ~/.claude/plugins/\n"
             printf "\nOptions:\n"
-            printf "  (no args)          Install or upgrade (v2, default)\n"
-            printf "  --version v1|v2    Install specific version\n"
-            printf "  --revert           Revert from v2 to v1\n"
+            printf "  --version v1|v2    Install specific version (skill mode only)\n"
+            printf "  --revert           Revert from v2 to v1 (skill mode only)\n"
+            printf "  --update           Pull latest and reinstall\n"
             printf "  --check-update     Check for newer release\n"
             printf "  -v                 Print version\n"
             printf "  --help             Show help\n"
-            printf "\nVersions:\n"
-            printf "  v1  Monolithic SKILL.md (867 lines). All logic in markdown.\n"
-            printf "  v2  Slim SKILL.md (203 lines) + session-init.py (548 lines).\n"
-            printf "      Script handles deterministic ops. SKILL.md handles AI judgment.\n" ;;
+            printf "\nExamples:\n"
+            printf "  # One-liner install (skill mode)\n"
+            printf "  curl -fsSL https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/main/install.sh | bash\n"
+            printf "\n  # One-liner install (plugin mode)\n"
+            printf "  curl -fsSL https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/main/install.sh | bash -s -- --plugin\n"
+            printf "\n  # Update existing installation\n"
+            printf "  curl -fsSL https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/main/install.sh | bash -s -- --update\n" ;;
         "")
-            install_skill "v2"
+            if [[ "${install_mode}" == "plugin" ]]; then
+                install_plugin
+            else
+                install_skill "v2"
+            fi
             check_update ;;
         --version)
-            # --version with argument (v1 or v2)
-            target_version="${2:-v2}"
+            target_version="${args[1]:-v2}"
             if [[ "${target_version}" != "v1" ]] && [[ "${target_version}" != "v2" ]]; then
                 die "Invalid version: ${target_version}. Use v1 or v2."
             fi
             install_skill "${target_version}"
             check_update ;;
         *)
-            die "Unknown argument: $1 (try --help)" ;;
+            die "Unknown argument: ${args[0]} (try --help)" ;;
     esac
 }
 

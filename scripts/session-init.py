@@ -6,7 +6,7 @@ All commands output JSON for easy AI consumption.
 
 Usage:
     session-init.py preflight                              # Detect environment
-    session-init.py init --soul-purpose "..." --ralph-mode Manual
+    session-init.py init --soul-purpose "..." --ralph-mode Manual --ralph-intensity ""
     session-init.py validate                               # Check/repair session files
     session-init.py cache-governance                        # Cache CLAUDE.md governance sections
     session-init.py restore-governance                      # Restore cached sections after /init
@@ -25,7 +25,16 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-TEMPLATE_DIR = Path.home() / "claude-session-init-templates"
+# Template resolution: plugin bundled templates > home dir fallback
+_script_dir = Path(__file__).resolve().parent
+_plugin_templates = _script_dir.parent / "templates"
+_home_templates = Path.home() / "claude-session-init-templates"
+
+if _plugin_templates.is_dir():
+    TEMPLATE_DIR = _plugin_templates
+else:
+    TEMPLATE_DIR = _home_templates
+
 SESSION_DIR = Path("session-context")
 CLAUDE_MD = Path("CLAUDE.md")
 GOVERNANCE_CACHE = Path("/tmp/claude-governance-cache.json")
@@ -77,13 +86,14 @@ After every session, update these files in `session-context/` with timestamp and
     "IMMUTABLE TEMPLATE RULES": """\
 ## IMMUTABLE TEMPLATE RULES
 
-> **DO NOT** edit the template files in `~/claude-session-init-templates/`
+> **DO NOT** edit the template files bundled with the plugin.
 > Templates are immutable source-of-truth. Only edit the copies in your project.""",
 
     "Ralph Loop": """\
 ## Ralph Loop
 
-**Mode**: {ralph_mode}""",
+**Mode**: {ralph_mode}
+**Intensity**: {ralph_intensity}""",
 }
 
 
@@ -131,7 +141,7 @@ def _find_section(sections, key):
     return None, None
 
 
-# ── Commands ──────────────────────────────────────────────────────────────────
+# -- Commands ------------------------------------------------------------------
 
 def cmd_preflight(args):
     """Detect environment, return structured data."""
@@ -162,6 +172,94 @@ def cmd_preflight(args):
     ]
     result["root_file_count"] = len(root_files)
 
+    # Project signals -- detect context for brainstorm weight classification
+    signals = {
+        "has_readme": False,
+        "readme_excerpt": "",
+        "has_package_json": False,
+        "package_name": "",
+        "package_description": "",
+        "has_pyproject": False,
+        "has_cargo_toml": False,
+        "has_go_mod": False,
+        "has_code_files": False,
+        "detected_stack": [],
+        "is_empty_project": False,
+    }
+
+    # README detection
+    readme = Path("README.md")
+    if not readme.is_file():
+        readme = Path("readme.md")
+    if readme.is_file():
+        signals["has_readme"] = True
+        try:
+            lines = readme.read_text(errors="replace").split("\n")
+            content_lines = [
+                l.strip() for l in lines
+                if l.strip() and not l.strip().startswith("#")
+            ][:3]
+            signals["readme_excerpt"] = " ".join(content_lines)[:200]
+        except Exception:
+            pass
+
+    # package.json detection
+    pkg = Path("package.json")
+    if pkg.is_file():
+        signals["has_package_json"] = True
+        try:
+            data = json.loads(pkg.read_text(errors="replace"))
+            signals["package_name"] = data.get("name", "")
+            signals["package_description"] = data.get("description", "")
+        except Exception:
+            pass
+
+    # Stack marker files
+    if Path("pyproject.toml").is_file():
+        signals["has_pyproject"] = True
+        signals["detected_stack"].append("python")
+    if Path("Cargo.toml").is_file():
+        signals["has_cargo_toml"] = True
+        signals["detected_stack"].append("rust")
+    if Path("go.mod").is_file():
+        signals["has_go_mod"] = True
+        signals["detected_stack"].append("go")
+    if signals["has_package_json"]:
+        signals["detected_stack"].append("node")
+
+    # Code file detection (root + src/)
+    code_exts = {".py", ".js", ".ts", ".rs", ".go", ".jsx", ".tsx"}
+    search_dirs = [Path(".")]
+    if Path("src").is_dir():
+        search_dirs.append(Path("src"))
+    for d in search_dirs:
+        try:
+            for f in d.iterdir():
+                if f.is_file() and f.suffix in code_exts:
+                    signals["has_code_files"] = True
+                    # Infer stack from extensions if not already detected
+                    if f.suffix == ".py" and "python" not in signals["detected_stack"]:
+                        signals["detected_stack"].append("python")
+                    elif f.suffix in (".js", ".jsx", ".ts", ".tsx") and "node" not in signals["detected_stack"]:
+                        signals["detected_stack"].append("node")
+                    break  # One hit per directory is enough
+        except PermissionError:
+            pass
+
+    # Empty project detection
+    has_manifests = any([
+        signals["has_readme"], signals["has_package_json"],
+        signals["has_pyproject"], signals["has_cargo_toml"],
+        signals["has_go_mod"],
+    ])
+    signals["is_empty_project"] = (
+        not signals["has_code_files"]
+        and not has_manifests
+        and len(root_files) <= 2
+    )
+
+    result["project_signals"] = signals
+
     # Template validation
     existing = [f for f in REQUIRED_TEMPLATES if (TEMPLATE_DIR / f).is_file()]
     result["template_count"] = len(existing)
@@ -182,7 +280,7 @@ def cmd_preflight(args):
 def cmd_init(args):
     """Bootstrap session-context with templates and soul purpose."""
     if not TEMPLATE_DIR.is_dir():
-        _out({"status": "error", "message": "Templates dir missing at ~/claude-session-init-templates/"})
+        _out({"status": "error", "message": f"Templates dir missing at {TEMPLATE_DIR}"})
         sys.exit(1)
 
     missing = [f for f in REQUIRED_TEMPLATES if not (TEMPLATE_DIR / f).is_file()]
@@ -233,6 +331,7 @@ def cmd_init(args):
 ## Notes
 - Soul purpose established: {today}
 - Ralph Loop preference: {args.ralph_mode}
+- Ralph Loop intensity: {getattr(args, 'ralph_intensity', '') or 'N/A'}
 """)
 
     created = [f for f in SESSION_FILES if (SESSION_DIR / f).is_file()]
@@ -346,12 +445,13 @@ def cmd_ensure_governance(args):
     sections = _parse_md_sections(content)
 
     ralph_mode = getattr(args, 'ralph_mode', 'Manual')
+    ralph_intensity = getattr(args, 'ralph_intensity', '')
     added = []
 
     for key, template_content in GOVERNANCE_SECTIONS.items():
         heading, _ = _find_section(sections, key)
         if heading is None:
-            section_text = template_content.format(ralph_mode=ralph_mode)
+            section_text = template_content.format(ralph_mode=ralph_mode, ralph_intensity=ralph_intensity or 'N/A')
             content = content.rstrip() + f"\n\n---\n\n{section_text}\n"
             added.append(key)
 
@@ -374,6 +474,8 @@ def cmd_read_context(args):
         "open_tasks": [],
         "recent_progress": [],
         "status_hint": "unknown",
+        "ralph_mode": "",
+        "ralph_intensity": "",
     }
 
     # Read soul purpose
@@ -408,6 +510,18 @@ def cmd_read_context(args):
                 result["open_tasks"].append(stripped.lstrip('- '))
             elif '[x]' in stripped.lower():
                 result["recent_progress"].append(stripped.lstrip('- '))
+
+    # Extract ralph config from CLAUDE.md
+    if CLAUDE_MD.is_file():
+        md_content = CLAUDE_MD.read_text()
+        md_sections = _parse_md_sections(md_content)
+        _, ralph_body = _find_section(md_sections, "Ralph Loop")
+        if ralph_body:
+            for line in ralph_body.split('\n'):
+                if line.strip().startswith('**Mode**:'):
+                    result["ralph_mode"] = line.split('**Mode**:')[1].strip().lower()
+                elif line.strip().startswith('**Intensity**:'):
+                    result["ralph_intensity"] = line.split('**Intensity**:')[1].strip()
 
     _out(result)
 
@@ -487,7 +601,7 @@ def cmd_archive(args):
     })
 
 
-# ── Main ──────────────────────────────────────────────────────────────────────
+# -- Main ---------------------------------------------------------------------
 
 def main():
     parser = argparse.ArgumentParser(
@@ -502,6 +616,7 @@ def main():
     init_p = subparsers.add_parser("init", help="Bootstrap session-context")
     init_p.add_argument("--soul-purpose", required=True)
     init_p.add_argument("--ralph-mode", default="Manual")
+    init_p.add_argument("--ralph-intensity", default="")
 
     # validate
     subparsers.add_parser("validate", help="Validate/repair session files")
@@ -515,6 +630,7 @@ def main():
     # ensure-governance
     eg_p = subparsers.add_parser("ensure-governance", help="Add missing governance sections")
     eg_p.add_argument("--ralph-mode", default="Manual")
+    eg_p.add_argument("--ralph-intensity", default="")
 
     # read-context
     subparsers.add_parser("read-context", help="Read soul purpose + active context")

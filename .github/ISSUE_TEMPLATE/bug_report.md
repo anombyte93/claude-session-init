@@ -21,7 +21,10 @@ What you expected to happen.
 What actually happened.
 
 **Environment**
+- Atlas Session Lifecycle version:
+- Install mode: skill / plugin
 - Claude Code version:
+- Python version:
 - OS:
 - Git repo: yes/no
 

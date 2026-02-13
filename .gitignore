@@ -20,5 +20,11 @@ Thumbs.db
 .env
 .env.local
 
-# Backups (runtime only - pre-codify files are tracked for version reference)
+# Backups
 *.bak
+
+# Cache
+.cache/
+
+# Session context (user-generated, not repo content)
+session-context/

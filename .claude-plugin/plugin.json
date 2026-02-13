@@ -1,0 +1,22 @@
+{
+  "name": "atlas-session-lifecycle",
+  "version": "2.0.0",
+  "description": "Session lifecycle management for Claude Code — persistent memory, soul purpose, reconcile, harvest, archive",
+  "author": {
+    "name": "Atlas AI",
+    "url": "https://atlas-ai.au"
+  },
+  "repository": "https://github.com/anombyte93/atlas-session-lifecycle",
+  "license": "MIT",
+  "keywords": [
+    "session",
+    "lifecycle",
+    "init",
+    "soul-purpose",
+    "context-management",
+    "claude-code",
+    "persistent-memory",
+    "project-initialization",
+    "session-management"
+  ]
+}

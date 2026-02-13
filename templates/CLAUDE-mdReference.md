@@ -146,5 +146,5 @@ See `session-context/CLAUDE-troubleshooting.md` for full troubleshooting guide.
 
 ## IMMUTABLE TEMPLATE RULES
 
-> **DO NOT** edit the template files in `~/Hermes/CLAUDE-templates/`
+> **DO NOT** edit the template files bundled with the plugin.
 > Templates are immutable source-of-truth. Only edit the copies in your project.
