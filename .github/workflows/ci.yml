@@ -4,16 +4,13 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  pull-requests: write
+
 jobs:
-  commitlint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - run: npm install @commitlint/cli @commitlint/config-conventional
-      - name: Validate PR title (conventional commit)
-        run: echo "${{ github.event.pull_request.title }}" | ./node_modules/.bin/commitlint --config commitlint.config.js
+  ci:
+    uses: anombyte93/copilot/.github/workflows/reusable-ci.yml@v1
+    with:
+      node-version: '22'
+      run-lint: false
+      install-command: 'npm ci'
