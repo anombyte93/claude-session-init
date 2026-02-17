@@ -28,3 +28,8 @@ Thumbs.db
 
 # Session context (user-generated, not repo content)
 session-context/
+
+# Claude Code runtime artifacts
+.claude/
+.playwright-mcp/
+.taskmaster/

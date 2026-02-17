@@ -52,8 +52,122 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# Detect if terminal is interactive (not piped via curl)
+is_interactive() {
+    [[ -t 1 ]] && [[ -t 0 ]] && [[ -z "${CI:-}" ]]
+}
+
 require_cmd() {
     command -v "$1" >/dev/null 2>&1 || die "Required command not found: $1"
+}
+
+print_banner() {
+    # Print ASCII welcome banner. $1 = mode ("skill" or "plugin")
+    local mode="${1:-skill}"
+    printf "\n"
+    printf "${CYAN}╔══════════════════════════════════════════════════╗${RESET}\n"
+    printf "${CYAN}║${RESET}   ${BOLD}Atlas Session Lifecycle${RESET}                         ${CYAN}║${RESET}\n"
+    printf "${CYAN}║${RESET}   Session management for Claude Code              ${CYAN}║${RESET}\n"
+    printf "${CYAN}║${RESET}   v${VERSION} — ${mode} installer                        ${CYAN}║${RESET}\n"
+    printf "${CYAN}╚══════════════════════════════════════════════════╝${RESET}\n"
+    printf "\n"
+}
+
+detect_first_run() {
+    # Check whether this is a first install or an upgrade.
+    # Returns "first_run" or "upgrade" via stdout.
+    local has_skill="false"
+    local has_mcp_entry="false"
+
+    if [[ -f "${SKILL_DIR}/SKILL.md" ]]; then
+        has_skill="true"
+    fi
+
+    if [[ -f "${MCP_CONFIG}" ]] && grep -q '"atlas-session"' "${MCP_CONFIG}" 2>/dev/null; then
+        has_mcp_entry="true"
+    fi
+
+    if [[ "${has_skill}" == "true" ]] || [[ "${has_mcp_entry}" == "true" ]]; then
+        echo "upgrade"
+    else
+        echo "first_run"
+    fi
+}
+
+step() {
+    # Print a step indicator: [1/5] Description...
+    # Usage: step 1 5 "Checking prerequisites"
+    local current="$1" total="$2" description="$3"
+    printf "\n${BOLD}[%d/%d]${RESET} %s\n" "${current}" "${total}" "${description}"
+}
+
+step_ok() {
+    # Print a green checkmark after a step completes
+    # Usage: step_ok "Prerequisites satisfied"
+    printf "${GREEN}  ✓${RESET} %s\n" "$*"
+}
+
+verify_installation() {
+    # Post-install verification. $1 = target_version ("v1" or "v2")
+    local target_version="${1:-v2}"
+    local all_ok="true"
+
+    printf "\n"
+    printf "${BOLD}Installation Summary${RESET}\n"
+    printf "%-40s %s\n" "────────────────────────────────────────" "──────"
+
+    # Check SKILL.md exists and is non-empty
+    if [[ -f "${SKILL_DIR}/SKILL.md" ]] && [[ -s "${SKILL_DIR}/SKILL.md" ]]; then
+        printf "  %-38s ${GREEN}✓${RESET}\n" "SKILL.md installed"
+    else
+        printf "  %-38s ${RED}✗${RESET}\n" "SKILL.md installed"
+        all_ok="false"
+    fi
+
+    # Check templates directory exists
+    if [[ -d "${TEMPLATE_DIR}" ]] && [[ -n "$(ls -A "${TEMPLATE_DIR}" 2>/dev/null)" ]]; then
+        printf "  %-38s ${GREEN}✓${RESET}\n" "Templates directory populated"
+    else
+        printf "  %-38s ${RED}✗${RESET}\n" "Templates directory populated"
+        all_ok="false"
+    fi
+
+    # Check session-init.py is executable (v2 only)
+    if [[ "${target_version}" == "v2" ]]; then
+        if [[ -x "${SKILL_DIR}/session-init.py" ]]; then
+            printf "  %-38s ${GREEN}✓${RESET}\n" "session-init.py executable"
+        else
+            printf "  %-38s ${RED}✗${RESET}\n" "session-init.py executable"
+            all_ok="false"
+        fi
+    fi
+
+    # Check .version file
+    if [[ -f "${SKILL_DIR}/.version" ]]; then
+        printf "  %-38s ${GREEN}✓${RESET}\n" "Version file written"
+    else
+        printf "  %-38s ${RED}✗${RESET}\n" "Version file written"
+        all_ok="false"
+    fi
+
+    # Check install.sh cached
+    if [[ -f "${SKILL_DIR}/install.sh" ]]; then
+        printf "  %-38s ${GREEN}✓${RESET}\n" "Installer cached for updates"
+    else
+        printf "  %-38s ${YELLOW}—${RESET}\n" "Installer cached for updates"
+    fi
+
+    printf "%-40s %s\n" "────────────────────────────────────────" "──────"
+
+    if [[ "${all_ok}" == "true" ]]; then
+        printf "\n${GREEN}${BOLD}All checks passed.${RESET}\n"
+    else
+        printf "\n${YELLOW}${BOLD}Some checks failed.${RESET} Review the items marked with ${RED}✗${RESET} above.\n"
+    fi
+
+    printf "\n"
+    printf "${BOLD}Next steps:${RESET} Run ${CYAN}/start${RESET} in Claude Code to begin.\n"
+    printf "\n"
 }
 
 check_update() {
@@ -164,9 +278,12 @@ VEOF
 install_plugin() {
     local mode="install"
 
-    info "Atlas Session Lifecycle — Plugin Installer"
-    info "Version: ${BOLD}v${VERSION}${RESET}"
-    printf "\n"; require_cmd git
+    if is_interactive; then
+        print_banner "plugin"
+    else
+        info "Atlas Session Lifecycle — Plugin Installer v${VERSION}"
+    fi
+    require_cmd git
 
     if [[ -d "${PLUGIN_DIR}" ]]; then
         mode="upgrade"
@@ -414,10 +531,27 @@ install_skill() {
     local target_version="${1:-v2}"
     local extras_mode="${2:-ask}"
     local mode="install"
+    local total_steps=5
 
-    info "Atlas Session Lifecycle — Skill Installer"
-    info "Skill: ${BOLD}${SKILL_NAME}${RESET} v${VERSION} (${target_version})"
-    printf "\n"; require_cmd git
+    # --- Welcome banner ---
+    if is_interactive; then
+        print_banner "skill"
+    else
+        info "Atlas Session Lifecycle — Skill Installer v${VERSION} (${target_version})"
+    fi
+
+    # --- First-run detection ---
+    local run_type; run_type=$(detect_first_run)
+    if [[ "${run_type}" == "first_run" ]] && is_interactive; then
+        printf "  ${CYAN}First time installing?${RESET} This wizard will guide you through setup.\n\n"
+    fi
+
+    # =========================================================================
+    # [1/5] Checking prerequisites
+    # =========================================================================
+    step 1 ${total_steps} "Checking prerequisites..."
+    require_cmd git
+    step_ok "git available"
 
     if [[ -d "${SKILL_DIR}" ]]; then
         mode="upgrade"
@@ -425,20 +559,31 @@ install_skill() {
         if [[ -f "${SKILL_DIR}/.version" ]]; then
             existing_version=$(head -1 "${SKILL_DIR}/.version" 2>/dev/null || echo "unknown")
         fi
-        info "Existing installation detected (${existing_version})"
-        info "Mode: upgrade"
+        step_ok "Existing installation detected (${existing_version}) — upgrading"
         if [[ -f "${SKILL_DIR}/SKILL.md" ]]; then
             cp "${SKILL_DIR}/SKILL.md" "${SKILL_DIR}/SKILL.md.bak"
-            ok "Backed up SKILL.md -> SKILL.md.bak"
+            step_ok "Backed up SKILL.md -> SKILL.md.bak"
         fi
-    else info "Mode: fresh install"; fi
+    else
+        step_ok "Fresh install — no previous version found"
+    fi
+
+    # =========================================================================
+    # [2/5] Downloading latest release
+    # =========================================================================
+    step 2 ${total_steps} "Downloading latest release..."
 
     TMPDIR_SKILL=$(mktemp -d "${TMPDIR:-/tmp}/claude-skill-XXXXXX")
-    info "Cloning ${REPO_OWNER}/${REPO_NAME}..."
     git clone --depth 1 --quiet "${CLONE_URL}" "${TMPDIR_SKILL}/repo" 2>/dev/null \
         || die "Failed to clone repository."
 
     local src_dir="${TMPDIR_SKILL}/repo"
+    step_ok "Cloned ${REPO_OWNER}/${REPO_NAME}"
+
+    # =========================================================================
+    # [3/5] Installing skill files
+    # =========================================================================
+    step 3 ${total_steps} "Installing skill files..."
 
     mkdir -p "${SKILL_DIR}"
 
@@ -446,19 +591,19 @@ install_skill() {
         # v1 install: monolithic SKILL.md, no script
         if [[ -f "${src_dir}/v1/SKILL.md" ]]; then
             cp "${src_dir}/v1/SKILL.md" "${SKILL_DIR}/SKILL.md"
-            ok "Installed v1 SKILL.md (monolithic)"
+            step_ok "Installed v1 SKILL.md (monolithic)"
         else
             die "v1/SKILL.md not found in repository."
         fi
         if [[ -f "${SKILL_DIR}/session-init.py" ]]; then
             rm "${SKILL_DIR}/session-init.py"
-            ok "Removed session-init.py (not used by v1)"
+            step_ok "Removed session-init.py (not used by v1)"
         fi
     else
         # v2 install: skill from skills/start/, script from scripts/
         if [[ -f "${src_dir}/skills/start/SKILL.md" ]]; then
             cp "${src_dir}/skills/start/SKILL.md" "${SKILL_DIR}/SKILL.md"
-            ok "Installed SKILL.md (orchestrator)"
+            step_ok "Installed SKILL.md (orchestrator)"
         else
             die "skills/start/SKILL.md not found in repository."
         fi
@@ -466,7 +611,7 @@ install_skill() {
         if [[ -f "${src_dir}/scripts/session-init.py" ]]; then
             cp "${src_dir}/scripts/session-init.py" "${SKILL_DIR}/session-init.py"
             chmod +x "${SKILL_DIR}/session-init.py"
-            ok "Installed session-init.py (backend)"
+            step_ok "Installed session-init.py (backend)"
         else
             die "scripts/session-init.py not found in repository."
         fi
@@ -476,24 +621,30 @@ install_skill() {
     if [[ -d "${src_dir}/templates" ]]; then
         mkdir -p "${TEMPLATE_DIR}"
         cp "${src_dir}/templates/"* "${TEMPLATE_DIR}/" 2>/dev/null || true
-        ok "Installed templates to ${TEMPLATE_DIR}/"
+        step_ok "Installed templates to ${TEMPLATE_DIR}/"
     fi
 
     if [[ -f "${src_dir}/install.sh" ]]; then
         cp "${src_dir}/install.sh" "${SKILL_DIR}/install.sh"
         chmod +x "${SKILL_DIR}/install.sh"
+        step_ok "Cached installer for future updates"
     fi
+
+    # =========================================================================
+    # [4/5] Installing extras (if applicable)
+    # =========================================================================
+    step 4 ${total_steps} "Installing extras..."
 
     # Offer extra bundled skills (v2 only)
     if [[ "${target_version}" == "v2" ]]; then
         install_extra_skills "${src_dir}" "${extras_mode}"
-    fi
-
-    # Offer Zai MCP registration (v2 only)
-    if [[ "${target_version}" == "v2" ]]; then
         setup_zai_mcp "${extras_mode}"
+        step_ok "Extras phase complete"
+    else
+        step_ok "Skipped (v1 has no extras)"
     fi
 
+    # Write version file and clean up stale artifacts
     local timestamp; timestamp=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
     cat > "${SKILL_DIR}/.version" <<VEOF
 ${VERSION}
@@ -502,25 +653,17 @@ mode: ${mode}
 repo: ${REPO_OWNER}/${REPO_NAME}
 skill_version: ${target_version}
 VEOF
-    ok "Wrote .version (${VERSION}, ${timestamp})"
 
     # Clean up old flat file if it exists
     if [[ -f "${HOME}/.claude/skills/start.md" ]]; then
         rm "${HOME}/.claude/skills/start.md"
-        ok "Removed old flat file start.md"
     fi
 
-    printf "\n"
-    printf "${GREEN}${BOLD}Successfully %s ${SKILL_NAME} v${VERSION} (${target_version})${RESET}\n" \
-        "$([ "${mode}" = "upgrade" ] && echo "upgraded" || echo "installed")"
-    printf "  Location: %s\n" "${SKILL_DIR}"
-    printf "  Templates: %s\n" "${TEMPLATE_DIR}"
-    if [[ "${target_version}" == "v2" ]]; then
-        printf "  Script: %s/session-init.py\n" "${SKILL_DIR}"
-    fi
-    printf "\n"
-    info "To use: ${CYAN}/start${RESET}"
-    printf "\n"
+    # =========================================================================
+    # [5/5] Verifying installation
+    # =========================================================================
+    step 5 ${total_steps} "Verifying installation..."
+    verify_installation "${target_version}"
 }
 
 main() {
