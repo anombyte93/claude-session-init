@@ -427,7 +427,7 @@ def read_context(project_dir: str) -> dict:
                 purpose_lines.append(line.strip())
         result["soul_purpose"] = " ".join(purpose_lines).strip()
 
-        if "(No active soul purpose)" in sp_content or not result["soul_purpose"]:
+        if "(No active soul purpose)" in result["soul_purpose"] or not result["soul_purpose"]:
             result["soul_purpose"] = ""
             result["status_hint"] = "no_purpose"
 
