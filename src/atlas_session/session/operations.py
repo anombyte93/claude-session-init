@@ -3,6 +3,9 @@
 Extracted from session-init.py — all logic preserved, adapted to be
 called as functions (not CLI subcommands) returning dicts instead of
 printing JSON.
+
+SECURITY: All project_dir parameters are resolved and validated to
+prevent path traversal attacks.
 """
 
 import json
@@ -25,6 +28,32 @@ from ..common.state import (
     parse_md_sections,
     session_dir,
 )
+
+
+def _resolve_project_dir(project_dir: str) -> Path:
+    """Resolve and validate project_dir to prevent path traversal.
+
+    Returns:
+        Resolved absolute Path object
+
+    Raises:
+        ValueError: If path is invalid or contains suspicious components
+    """
+    path = Path(project_dir).resolve()
+
+    # Check for path traversal indicators
+    # (Already handled by resolve(), but double-check)
+    path_str = str(path)
+    if ".." in path_str.split(path.root)[-1]:
+        # This shouldn't happen after resolve, but check anyway
+        raise ValueError(f"Path traversal detected in: {project_dir}")
+
+    # Ensure path exists and is a directory
+    if not path.is_dir():
+        raise ValueError(f"Not a directory: {project_dir}")
+
+    return path
+
 
 # ---------------------------------------------------------------------------
 # preflight

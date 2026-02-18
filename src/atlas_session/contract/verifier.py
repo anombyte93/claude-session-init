@@ -1,16 +1,105 @@
 """Deterministic test runner for contract criteria.
 
 Runs each criterion and returns pass/fail results — no AI judgment.
+
+SECURITY: Commands are restricted to an allowlist and project_dir is
+validated to prevent path traversal.
 """
 
 from __future__ import annotations
 
+import re
 import shlex
 import subprocess
 from pathlib import Path
 
 from ..session.operations import read_context
 from .model import Contract, CriterionType
+
+# SECURITY: Allowlist of permitted commands (basename only)
+_ALLOWED_COMMANDS = {
+    "git",
+    "pytest",
+    "python",
+    "python3",
+    "pip",
+    "pip3",
+    "npm",
+    "pnpm",
+    "yarn",
+    "node",
+    "cargo",
+    "rustc",
+    "go",
+    "gcc",
+    "g++",
+    "make",
+    "cmake",
+    "ls",
+    "find",
+    "cat",
+    "grep",
+    "head",
+    "tail",
+    "wc",
+}
+
+# Regex to detect shell metacharacters that could lead to injection
+_SHELL_METACHARACTERS = re.compile(r'[;&|`$()<>]')
+
+
+def _validate_command(command: str) -> tuple[bool, str | None]:
+    """Validate a command against security allowlist.
+
+    Returns:
+        (is_valid, error_message)
+    """
+    if not command:
+        return False, "Empty command"
+
+    # Check for shell metacharacters
+    if _SHELL_METACHARACTERS.search(command):
+        return False, f"Command contains shell metacharacters: {command}"
+
+    try:
+        parts = shlex.split(command)
+        if not parts:
+            return False, "Empty command after parsing"
+
+        cmd_base = parts[0]
+        # Get basename (e.g., "/usr/bin/git" -> "git")
+        cmd_name = Path(cmd_base).name
+
+        if cmd_name not in _ALLOWED_COMMANDS:
+            return False, f"Command '{cmd_name}' not in allowlist"
+
+        # Check for argument injection (e.g., flags that execute commands)
+        for arg in parts[1:]:
+            if _SHELL_METACHARACTERS.search(arg):
+                return False, f"Argument contains metacharacters: {arg}"
+
+        return True, None
+    except ValueError as e:
+        return False, f"Invalid command syntax: {e}"
+
+
+def _validate_project_dir(project_dir: str) -> tuple[bool, str | None]:
+    """Validate project_dir to prevent path traversal.
+
+    Returns:
+        (is_valid, error_message)
+    """
+    try:
+        resolved = Path(project_dir).resolve()
+        # Check if path exists
+        if not resolved.exists():
+            return False, f"Project directory does not exist: {project_dir}"
+        # Check if it's a directory
+        if not resolved.is_dir():
+            return False, f"Project path is not a directory: {project_dir}"
+        return True, None
+    except Exception as e:
+        return False, f"Invalid project directory: {e}"
 
 
 def run_tests(project_dir: str, contract: Contract) -> dict:
@@ -59,9 +148,23 @@ def _run_one(project_dir: str, criterion, contract: Contract) -> dict:
 
 
 def _run_shell(project_dir: str, name: str, command: str, pass_when: str, weight: float) -> dict:
-    """Run a shell command, evaluate pass_when against exit code."""
+    """Run a shell command, evaluate pass_when against exit code.
+
+    SECURITY: Command is validated against allowlist and project_dir is
+    resolved to prevent path traversal attacks.
+    """
     if not command:
         return {"name": name, "passed": False, "output": "No command specified", "weight": weight}
+
+    # SECURITY: Validate command
+    cmd_valid, cmd_error = _validate_command(command)
+    if not cmd_valid:
+        return {"name": name, "passed": False, "output": f"Command rejected: {cmd_error}", "weight": weight}
+
+    # SECURITY: Validate project_dir
+    dir_valid, dir_error = _validate_project_dir(project_dir)
+    if not dir_valid:
+        return {"name": name, "passed": False, "output": f"Directory rejected: {dir_error}", "weight": weight}
 
     try:
         args = shlex.split(command)

@@ -89,16 +89,22 @@ def register(mcp: FastMCP) -> None:
 
         Verifies signature and handles checkout.session.completed events.
 
+        SECURITY: The payload must be the raw UTF-8 bytes from the HTTP request
+        body, exactly as received from Stripe. Do not parse, reformat, or
+        normalize the JSON before passing to this function - HMAC verification
+        depends on byte-exact matching.
+
         Args:
-            payload: Raw request body as JSON string
+            payload: Raw request body as string (must be exact bytes from Stripe)
             signature: Stripe-Signature header value
 
         Returns:
             dict with status and event handling result
         """
         try:
-            # Convert JSON string to bytes for signature verification
-            payload_bytes = payload.encode("utf-8") if isinstance(payload, str) else payload
+            # CRITICAL: Use exact UTF-8 bytes from request - no re-encoding
+            # Stripe HMAC is computed over raw HTTP body bytes
+            payload_bytes = payload.encode("utf-8")
 
             result = verify_webhook_signature(payload_bytes, signature)
 

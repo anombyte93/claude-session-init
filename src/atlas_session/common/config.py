@@ -1,6 +1,7 @@
 """Configuration from environment variables and defaults."""
 
 import os
+import tempfile
 from pathlib import Path
 
 # Template resolution: plugin bundled templates > home dir fallback
@@ -12,7 +13,15 @@ TEMPLATE_DIR = _plugin_templates if _plugin_templates.is_dir() else _home_templa
 
 SESSION_DIR_NAME = "session-context"
 CLAUDE_MD_NAME = "CLAUDE.md"
-GOVERNANCE_CACHE_PATH = Path("/tmp/claude-governance-cache.json")
+# SECURITY: Use secure tempfile with random name to prevent symlink attacks
+_governance_cache = tempfile.NamedTemporaryFile(
+    mode="w",
+    prefix="claude-governance-",
+    suffix=".json",
+    delete=False,
+)
+_governance_cache.close()
+GOVERNANCE_CACHE_PATH = Path(_governance_cache.name)
 LIFECYCLE_STATE_FILENAME = ".lifecycle-active.json"
 
 ATLASCOIN_URL = os.environ.get("ATLASCOIN_URL", "http://localhost:3000")

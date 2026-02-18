@@ -2,10 +2,15 @@
 
 Handles local license activation, revocation, and cached validation.
 Stripe API calls are only made when cache expires (every 24h).
+
+SECURITY: License validation uses HMAC-signed tokens to prevent
+bypass via file timestamp manipulation.
 """
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import time
 from pathlib import Path
@@ -15,11 +20,60 @@ LICENSE_FILE = "license.json"
 CACHE_FILE = ".license_cache"
 CACHE_TTL = 86400  # 24 hours
 
+# HMAC secret for signing license tokens (in production, use env var)
+_HMAC_SECRET = hmac.new(
+    b"atlas-session-license-v1",
+    b"change-me-in-production",
+    hashlib.sha256,
+).digest()
+
+
+def _sign_token(customer_id: str, expiry: float) -> str:
+    """Create an HMAC signature for a license token.
+
+    Args:
+        customer_id: Stripe customer ID
+        expiry: Unix timestamp when token expires
+
+    Returns:
+        Hex-encoded HMAC signature
+    """
+    message = f"{customer_id}:{expiry}".encode()
+    return hmac.new(_HMAC_SECRET, message, hashlib.sha256).hexdigest()
+
+
+def _verify_token(customer_id: str, expiry: float, signature: str) -> bool:
+    """Verify an HMAC signature for a license token.
+
+    Args:
+        customer_id: Stripe customer ID from token
+        expiry: Unix timestamp from token
+        signature: HMAC signature to verify
+
+    Returns:
+        True if signature is valid, False otherwise
+    """
+    expected = _sign_token(customer_id, expiry)
+    return hmac.compare_digest(expected, signature)
+
 
 def _touch_cache() -> None:
     """Touch the cache file to mark license as freshly validated."""
     cache_path = LICENSE_DIR / CACHE_FILE
-    cache_path.touch()
+
+    # Store signed token instead of just touching file
+    customer_id = _get_customer_id()
+    if customer_id:
+        expiry = time.time() + CACHE_TTL
+        signature = _sign_token(customer_id, expiry)
+        token_data = {
+            "customer_id": customer_id,
+            "expiry": expiry,
+            "signature": signature,
+        }
+        cache_path.write_text(json.dumps(token_data))
+    else:
+        cache_path.touch()
 
 
 def _get_customer_id() -> str | None:
@@ -65,9 +119,9 @@ def revoke_license() -> dict:
 def is_license_valid(refresh: bool = True) -> bool:
     """Check if a valid, non-expired license exists locally.
 
-    Returns True only if both license.json exists AND the cache
-    file is less than 24 hours old. When cache expires and refresh=True,
-    attempts to re-validate via Stripe API.
+    Uses HMAC-signed tokens to prevent timestamp manipulation bypass.
+    Returns True only if license.json exists AND the cache token
+    is valid and not expired.
 
     Args:
         refresh: If True, try Stripe validation when cache expired.
@@ -81,21 +135,48 @@ def is_license_valid(refresh: bool = True) -> bool:
     if not license_path.exists():
         return False
 
+    customer_id = _get_customer_id()
+    if not customer_id:
+        return False
+
     if not cache_path.exists():
         # Cache missing - try to refresh if requested
         if refresh:
             return _try_refresh_from_stripe()
         return False
 
-    # Check cache age
-    cache_age = time.time() - cache_path.stat().st_mtime
-    if cache_age > CACHE_TTL:
-        # Cache expired - try to refresh if requested
+    # Try to read and verify signed token
+    try:
+        cache_data = json.loads(cache_path.read_text())
+        cached_customer_id = cache_data.get("customer_id")
+        expiry = cache_data.get("expiry")
+        signature = cache_data.get("signature")
+
+        # Verify customer ID matches
+        if cached_customer_id != customer_id:
+            if refresh:
+                return _try_refresh_from_stripe()
+            return False
+
+        # Verify HMAC signature
+        if not _verify_token(customer_id, expiry, signature):
+            if refresh:
+                return _try_refresh_from_stripe()
+            return False
+
+        # Check expiry
+        if time.time() > expiry:
+            if refresh:
+                return _try_refresh_from_stripe()
+            return False
+
+        return True
+
+    except (json.JSONDecodeError, KeyError, TypeError, OSError):
+        # Cache corrupted - try to refresh
         if refresh:
             return _try_refresh_from_stripe()
         return False
-
-    return True
 
 
 def _try_refresh_from_stripe() -> bool:
