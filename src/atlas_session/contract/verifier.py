@@ -45,7 +45,7 @@ _ALLOWED_COMMANDS = {
 }
 
 # Regex to detect shell metacharacters that could lead to injection
-_SHELL_METACHARACTERS = re.compile(r'[;&|`$()<>]')
+_SHELL_METACHARACTERS = re.compile(r"[;&|`$()<>]")
 
 
 def _validate_command(command: str) -> tuple[bool, str | None]:
