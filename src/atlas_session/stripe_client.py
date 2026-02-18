@@ -230,7 +230,8 @@ def validate_license_with_stripe(customer_id: str) -> dict:
     _ensure_stripe()
 
     try:
-        customer = stripe.Customer.retrieve(customer_id)
+        # Verify customer exists (retrieved but not directly used)
+        stripe.Customer.retrieve(customer_id)
 
         # Check for active subscriptions
         subscriptions = stripe.Subscription.list(
