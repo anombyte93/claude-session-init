@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "atlas-session-lifecycle"
+version = "4.0.0"
+description = "MCP server for AI session lifecycle management"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+dependencies = [
+    "fastmcp>=2.0",
+    "httpx>=0.27",
+]
+
+[project.scripts]
+atlas-session = "atlas_session.server:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

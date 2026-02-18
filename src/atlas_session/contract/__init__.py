@@ -1,0 +1,1 @@
+"""Contract and bounty domain."""

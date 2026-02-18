@@ -362,6 +362,19 @@ install_skill() {
         else
             die "scripts/session-init.py not found in repository."
         fi
+
+        # Deploy MCP server source (atlas-session MCP package)
+        if [[ -d "${src_dir}/src/atlas_session" ]]; then
+            mkdir -p "${SKILL_DIR}/src"
+            rm -rf "${SKILL_DIR}/src/atlas_session"
+            cp -r "${src_dir}/src/atlas_session" "${SKILL_DIR}/src/atlas_session"
+            if [[ -f "${src_dir}/src/pyproject.toml" ]]; then
+                cp "${src_dir}/src/pyproject.toml" "${SKILL_DIR}/src/pyproject.toml"
+            fi
+            ok "Installed MCP server (src/atlas_session/)"
+        else
+            warn "src/atlas_session/ not found — MCP server not installed"
+        fi
     fi
 
     # Install templates
