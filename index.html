@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Atlas Session Lifecycle — Project Completion Engine for Claude Code</title>
+    <meta name="description" content="Persistent memory and lifecycle management for Claude Code. Define soul purposes, track progress, and verify completion with objective tests.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        mono: ['"JetBrains Mono"', 'monospace'],
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        atlas: {
+                            blue: '#0066CC',
+                            green: '#00BB44',
+                            dark: '#0D1117',
+                            darker: '#010409',
+                            gray: '#161B22',
+                            border: '#30363D',
+                            text: '#C9D1D9',
+                            muted: '#8B949E',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background-color: #0D1117;
+            color: #C9D1D9;
+        }
+        .gradient-text {
+            background: linear-gradient(135deg, #0066CC 0%, #00BB44 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .glow {
+            box-shadow: 0 0 40px rgba(0, 187, 68, 0.15);
+        }
+        .code-block {
+            background: linear-gradient(180deg, #161B22 0%, #0D1117 100%);
+            border: 1px solid #30363D;
+        }
+        .feature-card:hover {
+            border-color: #0066CC;
+            transform: translateY(-2px);
+        }
+        .nav-blur {
+            backdrop-filter: blur(12px);
+            background: rgba(13, 17, 23, 0.8);
+        }
+        pre code {
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .terminal-line::before {
+            content: '$ ';
+            color: #00BB44;
+        }
+    </style>
+</head>
+<body class="font-sans antialiased">
+    <!-- Navigation -->
+    <nav class="fixed top-0 w-full z-50 nav-blur border-b border-atlas-border">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-16">
+                <div class="flex items-center gap-3">
+                    <svg class="w-8 h-8 text-atlas-green" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M12 6v6l4 2"/>
+                    </svg>
+                    <span class="font-semibold text-lg">atlas-session</span>
+                </div>
+                <div class="hidden md:flex items-center gap-8">
+                    <a href="#features" class="text-atlas-muted hover:text-white transition">Features</a>
+                    <a href="#how-it-works" class="text-atlas-muted hover:text-white transition">How It Works</a>
+                    <a href="#install" class="text-atlas-muted hover:text-white transition">Install</a>
+                    <a href="https://github.com/anombyte93/atlas-session-lifecycle" target="_blank" class="text-atlas-muted hover:text-white transition">GitHub</a>
+                </div>
+                <button id="mobile-menu-btn" class="md:hidden text-atlas-muted hover:text-white">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+        <!-- Mobile Menu -->
+        <div id="mobile-menu" class="hidden md:hidden border-t border-atlas-border bg-atlas-darker">
+            <div class="px-4 py-4 space-y-3">
+                <a href="#features" class="block text-atlas-muted hover:text-white transition">Features</a>
+                <a href="#how-it-works" class="block text-atlas-muted hover:text-white transition">How It Works</a>
+                <a href="#install" class="block text-atlas-muted hover:text-white transition">Install</a>
+                <a href="https://github.com/anombyte93/atlas-session-lifecycle" target="_blank" class="block text-atlas-muted hover:text-white transition">GitHub</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="pt-32 pb-20 px-4">
+        <div class="max-w-4xl mx-auto text-center">
+            <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-atlas-gray border border-atlas-border mb-8">
+                <span class="w-2 h-2 rounded-full bg-atlas-green animate-pulse"></span>
+                <span class="text-sm text-atlas-muted">v2.0 — MIT License</span>
+            </div>
+            <h1 class="text-4xl sm:text-5xl lg:text-6xl font-bold mb-6 leading-tight">
+                The <span class="gradient-text">Project Lifecycle Engine</span><br>for Claude Code
+            </h1>
+            <p class="text-lg sm:text-xl text-atlas-muted mb-10 max-w-2xl mx-auto">
+                Claude Code has no memory between sessions. Atlas fixes that with persistent context, soul purpose tracking, and objective verification—so you know when you're done.
+            </p>
+            <div class="flex flex-col sm:flex-row gap-4 justify-center mb-12">
+                <a href="#install" class="inline-flex items-center justify-center gap-2 px-6 py-3 bg-atlas-green hover:bg-emerald-500 text-atlas-darker font-semibold rounded-lg transition">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                    </svg>
+                    Install Atlas
+                </a>
+                <a href="https://github.com/anombyte93/atlas-session-lifecycle" target="_blank" class="inline-flex items-center justify-center gap-2 px-6 py-3 bg-atlas-gray hover:bg-atlas-border border border-atlas-border rounded-lg transition">
+                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+                    </svg>
+                    View on GitHub
+                </a>
+            </div>
+
+            <!-- Quick Install -->
+            <div class="code-block rounded-xl p-6 glow max-w-2xl mx-auto">
+                <div class="flex items-center justify-between mb-4">
+                    <span class="text-sm text-atlas-muted font-mono">Terminal</span>
+                    <button onclick="copyInstall()" class="text-xs text-atlas-muted hover:text-white flex items-center gap-1">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                        </svg>
+                        <span id="copy-text">Copy</span>
+                    </button>
+                </div>
+                <pre class="text-left text-sm sm:text-base overflow-x-auto"><code class="text-atlas-green"><span class="terminal-line"></span>curl -fsSL https://raw.githubusercontent.com/anombyte93/atlas-session-lifecycle/main/install.sh | bash</code></pre>
+                <p class="text-left text-sm text-atlas-muted mt-4">Then run <code class="text-atlas-blue">/start</code> in any Claude Code project.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Social Proof -->
+    <section class="py-12 border-y border-atlas-border">
+        <div class="max-w-4xl mx-auto px-4 text-center">
+            <p class="text-atlas-muted text-sm mb-4">Featured in</p>
+            <a href="https://www.reddit.com/r/ClaudeAI/comments/1r0n1qz/i_just_delivered_on_a_30000_contract_thanks_to/" target="_blank" class="inline-flex items-center gap-2 text-white hover:text-atlas-green transition">
+                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0zm5.01 4.744c.688 0 1.25.561 1.25 1.249a1.25 1.25 0 0 1-2.498.056l-2.597-.547-.8 3.747c1.824.07 3.48.632 4.674 1.488.308-.309.73-.491 1.207-.491.968 0 1.754.786 1.754 1.754 0 .716-.435 1.333-1.01 1.614a3.111 3.111 0 0 1 .042.52c0 2.694-3.13 4.87-7.004 4.87-3.874 0-7.004-2.176-7.004-4.87 0-.183.015-.366.043-.534A1.748 1.748 0 0 1 4.028 12c0-.968.786-1.754 1.754-1.754.463 0 .898.196 1.207.49 1.207-.883 2.878-1.43 4.744-1.487l.885-4.182a.342.342 0 0 1 .14-.197.35.35 0 0 1 .238-.042l2.906.617a1.214 1.214 0 0 1 1.108-.701zM9.25 12C8.561 12 8 12.562 8 13.25c0 .687.561 1.248 1.25 1.248.687 0 1.248-.561 1.248-1.249 0-.688-.561-1.249-1.249-1.249zm5.5 0c-.687 0-1.248.561-1.248 1.25 0 .687.561 1.248 1.249 1.248.688 0 1.249-.561 1.249-1.249 0-.687-.562-1.249-1.25-1.249zm-5.466 3.99a.327.327 0 0 0-.231.094.33.33 0 0 0 0 .463c.842.842 2.484.913 2.961.913.477 0 2.105-.056 2.961-.913a.361.361 0 0 0 .029-.463.33.33 0 0 0-.464 0c-.547.533-1.684.73-2.512.73-.828 0-1.979-.196-2.512-.73a.326.326 0 0 0-.232-.095z"/>
+                </svg>
+                <span>"I just delivered on a $30,000 contract thanks to Claude Code"</span>
+            </a>
+        </div>
+    </section>
+
+    <!-- Problem Section -->
+    <section class="py-20 px-4">
+        <div class="max-w-4xl mx-auto">
+            <h2 class="text-3xl font-bold mb-8 text-center">The Problem</h2>
+            <div class="grid md:grid-cols-3 gap-6">
+                <div class="p-6 rounded-xl bg-atlas-gray border border-atlas-border">
+                    <div class="w-10 h-10 rounded-lg bg-red-900/30 flex items-center justify-center mb-4">
+                        <svg class="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                    </div>
+                    <h3 class="font-semibold mb-2">No Persistent Memory</h3>
+                    <p class="text-atlas-muted text-sm">Every session starts from zero. Context, decisions, and progress are lost. You re-explain the same things every time.</p>
+                </div>
+                <div class="p-6 rounded-xl bg-atlas-gray border border-atlas-border">
+                    <div class="w-10 h-10 rounded-lg bg-red-900/30 flex items-center justify-center mb-4">
+                        <svg class="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+                        </svg>
+                    </div>
+                    <h3 class="font-semibold mb-2">Project Sprawl</h3>
+                    <p class="text-atlas-muted text-sm">Files accumulate at the project root with no organization. Scripts, docs, configs, and logs pile up across sessions.</p>
+                </div>
+                <div class="p-6 rounded-xl bg-atlas-gray border border-atlas-border">
+                    <div class="w-10 h-10 rounded-lg bg-red-900/30 flex items-center justify-center mb-4">
+                        <svg class="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                    </div>
+                    <h3 class="font-semibold mb-2">No "Done" Signal</h3>
+                    <p class="text-atlas-muted text-sm">Projects have goals, but no mechanism to track progress or verify completion. Are you actually done, or just stuck?</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section id="features" class="py-20 px-4 bg-atlas-gray/30">
+        <div class="max-w-6xl mx-auto">
+            <h2 class="text-3xl font-bold mb-4 text-center">Features</h2>
+            <p class="text-atlas-muted text-center mb-12 max-w-2xl mx-auto">Everything you need to manage Claude Code projects from inception to completion.</p>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <!-- Soul Purpose -->
+                <div class="feature-card p-6 rounded-xl bg-atlas-dark border border-atlas-border transition-all duration-200">
+                    <div class="flex items-start gap-4">
+                        <div class="w-12 h-12 rounded-lg bg-atlas-blue/20 flex items-center justify-center flex-shrink-0">
+                            <svg class="w-6 h-6 text-atlas-blue" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                            </svg>
+                        </div>
+                        <div>
+                            <h3 class="font-semibold text-lg mb-2">Soul Purpose Tracking</h3>
+                            <p class="text-atlas-muted text-sm mb-3">Define the single objective your project exists to achieve. One sentence that answers "why are we building this?"</p>
+                            <span class="text-xs text-atlas-green font-mono">Unique to Atlas</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Memory Bank -->
+                <div class="feature-card p-6 rounded-xl bg-atlas-dark border border-atlas-border transition-all duration-200">
+                    <div class="flex items-start gap-4">
+                        <div class="w-12 h-12 rounded-lg bg-purple-500/20 flex items-center justify-center flex-shrink-0">
+                            <svg class="w-6 h-6 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+                            </svg>
+                        </div>
+                        <div>
+                            <h3 class="font-semibold text-lg mb-2">5-File Memory Bank</h3>
+                            <p class="text-atlas-muted text-sm mb-3">Persistent Markdown files for active context, decisions, patterns, troubleshooting, and soul purpose. Human-readable and version-controlled.</p>
+                            <span class="text-xs text-atlas-muted font-mono">session-context/</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Lifecycle -->
+                <div class="feature-card p-6 rounded-xl bg-atlas-dark border border-atlas-border transition-all duration-200">
+                    <div class="flex items-start gap-4">
+                        <div class="w-12 h-12 rounded-lg bg-atlas-green/20 flex items-center justify-center flex-shrink-0">
+                            <svg class="w-6 h-6 text-atlas-green" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                            </svg>
+                        </div>
+                        <div>
+                            <h3 class="font-semibold text-lg mb-2">Lifecycle Management</h3>
+                            <p class="text-atlas-muted text-sm mb-3">Clear stages: Init → Reconcile → Settle → Archive. Know exactly where your project stands and what comes next.</p>
+                            <span class="text-xs text-atlas-green font-mono">Unique to Atlas</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- File Organization -->
+                <div class="feature-card p-6 rounded-xl bg-atlas-dark border border-atlas-border transition-all duration-200">
+                    <div class="flex items-start gap-4">
+                        <div class="w-12 h-12 rounded-lg bg-yellow-500/20 flex items-center justify-center flex-shrink-0">
+                            <svg class="w-6 h-6 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
+                            </svg>
+                        </div>
+                        <div>
+                            <h3 class="font-semibold text-lg mb-2">Auto File Organization</h3>
+                            <p class="text-atlas-muted text-sm mb-3">Detects root clutter and proposes cleanup. Scripts to scripts/, docs to docs/, configs to config/. Keep your workspace professional.</p>
+                            <span class="text-xs text-atlas-green font-mono">Unique to Atlas</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Verification -->
+                <div class="feature-card p-6 rounded-xl bg-atlas-dark border border-atlas-border transition-all duration-200">
+                    <div class="flex items-start gap-4">
+                        <div class="w-12 h-12 rounded-lg bg-red-500/20 flex items-center justify-center flex-shrink-0">
+                            <svg class="w-6 h-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                        </div>
+                        <div>
+                            <h3 class="font-semibold text-lg mb-2">Bounty Verification</h3>
+                            <p class="text-atlas-muted text-sm mb-3">Define acceptance criteria as deterministic tests. Independent agents verify completion. Objective proof, not subjective claims.</p>
+                            <span class="text-xs text-atlas-green font-mono">Unique to Atlas</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Context Harvesting -->
+                <div class="feature-card p-6 rounded-xl bg-atlas-dark border border-atlas-border transition-all duration-200">
+                    <div class="flex items-start gap-4">
+                        <div class="w-12 h-12 rounded-lg bg-cyan-500/20 flex items-center justify-center flex-shrink-0">
+                            <svg class="w-6 h-6 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+                            </svg>
+                        </div>
+                        <div>
+                            <h3 class="font-semibold text-lg mb-2">Context Harvesting</h3>
+                            <p class="text-atlas-muted text-sm mb-3">When closing a project, harvest learnings into permanent storage. Decisions, patterns, and troubleshooting feed into your next project.</p>
+                            <span class="text-xs text-atlas-muted font-mono">/settle → harvest</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- How It Works -->
+    <section id="how-it-works" class="py-20 px-4">
+        <div class="max-w-4xl mx-auto">
+            <h2 class="text-3xl font-bold mb-4 text-center">How It Works</h2>
+            <p class="text-atlas-muted text-center mb-12">One command to rule your project lifecycle.</p>
+
+            <div class="space-y-6">
+                <!-- Step 1 -->
+                <div class="flex gap-4 items-start">
+                    <div class="flex-shrink-0 w-10 h-10 rounded-full bg-atlas-blue flex items-center justify-center font-bold text-atlas-darker">1</div>
+                    <div class="flex-1 p-5 rounded-xl bg-atlas-gray border border-atlas-border">
+                        <h3 class="font-semibold text-lg mb-2">Run <code class="text-atlas-blue">/start</code> in a new project</h3>
+                        <p class="text-atlas-muted text-sm mb-3">Atlas detects you're starting fresh and enters <strong>Init Mode</strong>.</p>
+                        <div class="code-block rounded-lg p-4 text-sm">
+                            <code class="text-atlas-muted">→ Captures your soul purpose</code><br>
+                            <code class="text-atlas-muted">→ Bootstraps 5-file memory bank</code><br>
+                            <code class="text-atlas-muted">→ Organizes scattered files</code><br>
+                            <code class="text-atlas-muted">→ Generates CLAUDE.md</code>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 2 -->
+                <div class="flex gap-4 items-start">
+                    <div class="flex-shrink-0 w-10 h-10 rounded-full bg-atlas-blue flex items-center justify-center font-bold text-atlas-darker">2</div>
+                    <div class="flex-1 p-5 rounded-xl bg-atlas-gray border border-atlas-border">
+                        <h3 class="font-semibold text-lg mb-2">Work across multiple sessions</h3>
+                        <p class="text-atlas-muted text-sm mb-3">Each time you return, run <code class="text-atlas-blue">/start</code> to enter <strong>Reconcile Mode</strong>.</p>
+                        <div class="code-block rounded-lg p-4 text-sm">
+                            <code class="text-atlas-muted">→ Validates and repairs session files</code><br>
+                            <code class="text-atlas-muted">→ Refreshes CLAUDE.md from codebase</code><br>
+                            <code class="text-atlas-muted">→ Self-assesses: incomplete / done / uncertain</code><br>
+                            <code class="text-atlas-muted">→ Asks: Continue, Close, or Redefine?</code>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 3 -->
+                <div class="flex gap-4 items-start">
+                    <div class="flex-shrink-0 w-10 h-10 rounded-full bg-atlas-green flex items-center justify-center font-bold text-atlas-darker">3</div>
+                    <div class="flex-1 p-5 rounded-xl bg-atlas-gray border border-atlas-border">
+                        <h3 class="font-semibold text-lg mb-2">Run <code class="text-atlas-green">/stop</code> when complete</h3>
+                        <p class="text-atlas-muted text-sm mb-3">Atlas enters <strong>Settlement Mode</strong> to close your project properly.</p>
+                        <div class="code-block rounded-lg p-4 text-sm">
+                            <code class="text-atlas-muted">→ Harvests learnings (decisions, patterns)</code><br>
+                            <code class="text-atlas-muted">→ Runs doubt review (verifies completion)</code><br>
+                            <code class="text-atlas-muted">→ Creates PR and cleans up</code><br>
+                            <code class="text-atlas-muted">→ Archives soul purpose for future reference</code>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Comparison -->
+    <section class="py-20 px-4 bg-atlas-gray/30">
+        <div class="max-w-4xl mx-auto">
+            <h2 class="text-3xl font-bold mb-4 text-center">Why Atlas?</h2>
+            <p class="text-atlas-muted text-center mb-12">Memory tools answer "what did I learn?" Atlas answers "did I achieve my goal?"</p>
+
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="border-b border-atlas-border">
+                            <th class="text-left py-3 px-4 font-semibold text-atlas-muted">Feature</th>
+                            <th class="text-center py-3 px-4 font-semibold text-atlas-green">Atlas</th>
+                            <th class="text-center py-3 px-4 font-semibold text-atlas-muted">Claude-Mem</th>
+                            <th class="text-center py-3 px-4 font-semibold text-atlas-muted">memsearch</th>
+                            <th class="text-center py-3 px-4 font-semibold text-atlas-muted">Ralph Loop</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr class="border-b border-atlas-border/50">
+                            <td class="py-3 px-4">Persistent Memory</td>
+                            <td class="text-center py-3 px-4"><span class="text-atlas-green">✓</span></td>
+                            <td class="text-center py-3 px-4"><span class="text-atlas-muted">✓</span></td>
+                            <td class="text-center py-3 px-4"><span class="text-atlas-muted">✓</span></td>
+                            <td class="text-center py-3 px-4"><span class="text-red-400">✗</span></td>
+                        </tr>
+                        <tr class="border-b border-atlas-border/50">
+                            <td class="py-3 px-4">Soul Purpose Tracking</td>
+                            <td class="text-center py-3 px-4"><span class="text-atlas-green">✓</span></td>
+                            <td class="text-center py-3 px-4"><span class="text-red-400">✗</span></td>
+                            <td class="text-center py-3 px-4"><span class="text-red-400">✗</span></td>
+                            <td class="text-center py-3 px-4"><span class="text-red-400">✗</span></td>
+                        </tr>
+                        <tr class="border-b border-atlas-border/50">
+                            <td class="py-3 px-4">Lifecycle Management</td>
+                            <td class="text-center py-3 px-4"><span class="text-atlas-green">✓</span></td>
+                            <td class="text-center py-3 px-4"><span class="text-red-400">✗</span></td>
+                            <td class="text-center py-3 px-4"><span class="text-red-400">✗</span></td>
+                            <td class="text-center py-3 px-4"><span class="text-red-400">✗</span></td>
+                        </tr>
+                        <tr class="border-b border-atlas-border/50">
+                            <td class="py-3 px-4">Objective Verification</td>
+                            <td class="text-center py-3 px-4"><span class="text-atlas-green">✓</span></td>
+                            <td class="text-center py-3 px-4"><span class="text-red-400">✗</span></td>
+                            <td class="text-center py-3 px-4"><span class="text-red-400">✗</span></td>
+                            <td class="text-center py-3 px-4"><span class="text-atlas-muted">~</span></td>
+                        </tr>
+                        <tr class="border-b border-atlas-border/50">
+                            <td class="py-3 px-4">Auto File Organization</td>
+                            <td class="text-center py-3 px-4"><span class="text-atlas-green">✓</span></td>
+                            <td class="text-center py-3 px-4"><span class="text-red-400">✗</span></td>
+                            <td class="text-center py-3 px-4"><span class="text-red-400">✗</span></td>
+                            <td class="text-center py-3 px-4"><span class="text-red-400">✗</span></td>
+                        </tr>
+                        <tr>
+                            <td class="py-3 px-4">Context Harvesting</td>
+                            <td class="text-center py-3 px-4"><span class="text-atlas-green">✓</span></td>
+                            <td class="text-center py-3 px-4"><span class="text-red-400">✗</span></td>
+                            <td class="text-center py-3 px-4"><span class="text-red-400">✗</span></td>
+                            <td class="text-center py-3 px-4"><span class="text-red-400">✗</span></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <!-- Installation -->
+    <section id="install" class="py-20 px-4">
+        <div class="max-w-4xl mx-auto">
+            <h2 class="text-3xl font-bold mb-4 text-center">Installation</h2>
+            <p class="text-atlas-muted text-center mb-12">One command. That's it.</p>
+
+            <div class="space-y-6">
+                <!-- Method 1 -->
+                <div class="p-6 rounded-xl bg-atlas-gray border border-atlas-border">
+                    <div class="flex items-center gap-2 mb-4">
+                        <span class="px-2 py-1 text-xs font-semibold bg-atlas-green text-atlas-darker rounded">Recommended</span>
+                        <h3 class="font-semibold">Skill Mode (Default)</h3>
+                    </div>
+                    <div class="code-block rounded-lg p-4 mb-4">
+                        <pre class="text-sm"><code class="text-atlas-green">curl -fsSL https://raw.githubusercontent.com/anombyte93/atlas-session-lifecycle/main/install.sh | bash</code></pre>
+                    </div>
+                    <p class="text-atlas-muted text-sm">Installs to <code class="text-atlas-blue">~/.claude/skills/start/</code>. Run <code class="text-atlas-blue">/start</code> to begin.</p>
+                </div>
+
+                <!-- Method 2 -->
+                <div class="p-6 rounded-xl bg-atlas-gray border border-atlas-border">
+                    <h3 class="font-semibold mb-4">Plugin Mode</h3>
+                    <div class="code-block rounded-lg p-4 mb-4">
+                        <pre class="text-sm"><code class="text-atlas-green">curl -fsSL https://raw.githubusercontent.com/anombyte93/atlas-session-lifecycle/main/install.sh | bash -s -- --plugin</code></pre>
+                    </div>
+                    <p class="text-atlas-muted text-sm">Installs to <code class="text-atlas-blue">~/.claude/plugins/atlas-session-lifecycle/</code> with full plugin structure.</p>
+                </div>
+
+                <!-- Requirements -->
+                <div class="p-6 rounded-xl bg-atlas-gray/50 border border-atlas-border">
+                    <h3 class="font-semibold mb-4">Requirements</h3>
+                    <ul class="space-y-2 text-sm text-atlas-muted">
+                        <li class="flex items-center gap-2">
+                            <svg class="w-4 h-4 text-atlas-green" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                            Claude Code CLI
+                        </li>
+                        <li class="flex items-center gap-2">
+                            <svg class="w-4 h-4 text-atlas-green" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                            Python 3.8+
+                        </li>
+                        <li class="flex items-center gap-2">
+                            <svg class="w-4 h-4 text-atlas-green" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                            Git (optional — enables git mv for file organization)
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Docs Link -->
+    <section class="py-20 px-4 bg-atlas-gray/30">
+        <div class="max-w-4xl mx-auto text-center">
+            <h2 class="text-3xl font-bold mb-4">Ready to ship?</h2>
+            <p class="text-atlas-muted mb-8">Join developers using Atlas to deliver verified projects.</p>
+            <div class="flex flex-col sm:flex-row gap-4 justify-center">
+                <a href="https://github.com/anombyte93/atlas-session-lifecycle" target="_blank" class="inline-flex items-center justify-center gap-2 px-6 py-3 bg-atlas-blue hover:bg-blue-600 text-white font-semibold rounded-lg transition">
+                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+                    </svg>
+                    Star on GitHub
+                </a>
+                <a href="https://github.com/anombyte93/atlas-session-lifecycle/blob/main/README.md" target="_blank" class="inline-flex items-center justify-center gap-2 px-6 py-3 bg-atlas-gray hover:bg-atlas-border border border-atlas-border rounded-lg transition">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+                    </svg>
+                    Read Full Docs
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="py-8 px-4 border-t border-atlas-border">
+        <div class="max-w-4xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-4">
+            <div class="flex items-center gap-2">
+                <svg class="w-6 h-6 text-atlas-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <path d="M12 6v6l4 2"/>
+                </svg>
+                <span class="text-atlas-muted text-sm">atlas-session-lifecycle</span>
+            </div>
+            <div class="flex items-center gap-6 text-sm text-atlas-muted">
+                <a href="https://github.com/anombyte93/atlas-session-lifecycle" target="_blank" class="hover:text-white transition">GitHub</a>
+                <a href="https://github.com/anombyte93/atlas-session-lifecycle/blob/main/LICENSE" target="_blank" class="hover:text-white transition">MIT License</a>
+                <span>© 2026</span>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // Mobile menu toggle
+        const mobileMenuBtn = document.getElementById('mobile-menu-btn');
+        const mobileMenu = document.getElementById('mobile-menu');
+
+        mobileMenuBtn.addEventListener('click', () => {
+            mobileMenu.classList.toggle('hidden');
+        });
+
+        // Close mobile menu when clicking a link
+        mobileMenu.querySelectorAll('a').forEach(link => {
+            link.addEventListener('click', () => {
+                mobileMenu.classList.add('hidden');
+            });
+        });
+
+        // Copy install command
+        function copyInstall() {
+            navigator.clipboard.writeText('curl -fsSL https://raw.githubusercontent.com/anombyte93/atlas-session-lifecycle/main/install.sh | bash');
+            const copyText = document.getElementById('copy-text');
+            copyText.textContent = 'Copied!';
+            setTimeout(() => {
+                copyText.textContent = 'Copy';
+            }, 2000);
+        }
+
+        // Smooth scroll for anchor links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            });
+        });
+    </script>
+</body>
+</html>
