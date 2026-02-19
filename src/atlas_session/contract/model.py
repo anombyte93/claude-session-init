@@ -13,20 +13,20 @@ from pathlib import Path
 
 
 class CriterionType(str, Enum):
-    SHELL = "shell"                    # Run command, check exit code
-    CONTEXT_CHECK = "context_check"    # Check read-context JSON field
-    FILE_EXISTS = "file_exists"        # Check file/dir exists
-    GIT_CHECK = "git_check"            # Check git state
+    SHELL = "shell"  # Run command, check exit code
+    CONTEXT_CHECK = "context_check"  # Check read-context JSON field
+    FILE_EXISTS = "file_exists"  # Check file/dir exists
+    GIT_CHECK = "git_check"  # Check git state
 
 
 @dataclass
 class Criterion:
     name: str
     type: CriterionType
-    pass_when: str                     # "exit_code == 0", "== 0", "not_empty"
-    command: str | None = None         # Shell command (shell/git_check)
-    field: str | None = None           # Context field (context_check)
-    path: str | None = None            # File path (file_exists)
+    pass_when: str  # "exit_code == 0", "== 0", "not_empty"
+    command: str | None = None  # Shell command (shell/git_check)
+    field: str | None = None  # Context field (context_check)
+    path: str | None = None  # File path (file_exists)
     weight: float = 1.0
 
     def to_dict(self) -> dict:
@@ -47,7 +47,7 @@ class Contract:
     escrow: int
     criteria: list[Criterion] = field(default_factory=list)
     bounty_id: str = ""
-    status: str = "draft"              # draft | active | submitted | verified | settled | forfeited
+    status: str = "draft"  # draft | active | submitted | verified | settled | forfeited
 
     def to_dict(self) -> dict:
         return {

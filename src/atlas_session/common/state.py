@@ -3,7 +3,7 @@
 import json
 from pathlib import Path
 
-from .config import SESSION_DIR_NAME, CLAUDE_MD_NAME
+from .config import CLAUDE_MD_NAME, SESSION_DIR_NAME
 
 
 def session_dir(project_dir: str) -> Path:
@@ -52,9 +52,12 @@ def find_section(sections: dict[str, str], key: str) -> tuple[str | None, str | 
 
 
 def read_json(path: Path) -> dict:
-    """Read a JSON file, return empty dict on failure."""
+    """Read a JSON file, return empty dict on failure or non-dict content."""
     try:
-        return json.loads(path.read_text())
+        data = json.loads(path.read_text())
+        if not isinstance(data, dict):
+            return {}
+        return data
     except Exception:
         return {}
 

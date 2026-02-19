@@ -1,21 +1,64 @@
 [build-system]
-requires = ["setuptools>=68"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "atlas-session-lifecycle"
-version = "4.0.0"
-description = "MCP server for AI session lifecycle management"
-readme = "README.md"
+version = "4.1.0"
+description = "MCP server for AI session lifecycle management — persistent memory, soul purpose tracking, and contract verification for Claude Code"
+readme = "../README.md"
 license = "MIT"
 requires-python = ">=3.10"
+authors = [
+    {name = "Atlas AI", email = "hello@atlas-ai.au"},
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries",
+]
 dependencies = [
-    "fastmcp>=2.0",
-    "httpx>=0.27",
+    "fastmcp>=2.1,<3.0",
+    "httpx>=0.27,<1.0",
 ]
 
 [project.scripts]
 atlas-session = "atlas_session.server:main"
+atlas-license = "atlas_session.license:_cli_entry"
 
-[tool.setuptools.packages.find]
-where = ["src"]
+[project.urls]
+Homepage = "https://github.com/anombyte93/atlas-session-lifecycle"
+Repository = "https://github.com/anombyte93/atlas-session-lifecycle"
+Documentation = "https://github.com/anombyte93/atlas-session-lifecycle#readme"
+Issues = "https://github.com/anombyte93/atlas-session-lifecycle/issues"
+
+[project.optional-dependencies]
+stripe = [
+    "stripe>=11.0,<12.0",
+]
+test = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "respx>=0.22",
+]
+dev = [
+    "ruff>=0.3",
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "respx>=0.22",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["atlas_session"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]

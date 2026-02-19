@@ -11,7 +11,7 @@ from pathlib import Path
 from fastmcp import FastMCP
 
 from . import atlascoin
-from .model import Contract, Criterion, CriterionType
+from .model import Contract, Criterion
 from .verifier import run_tests
 
 
@@ -185,68 +185,83 @@ def register(mcp: FastMCP) -> None:
         suggestions: list[dict] = []
 
         # Always suggest: has commits
-        suggestions.append({
-            "name": "has_commits",
-            "type": "git_check",
-            "command": "git log --oneline -1",
-            "pass_when": "exit_code == 0",
-            "weight": 1.0,
-        })
+        suggestions.append(
+            {
+                "name": "has_commits",
+                "type": "git_check",
+                "command": "git log --oneline -1",
+                "pass_when": "exit_code == 0",
+                "weight": 1.0,
+            }
+        )
 
         # Always suggest: no open tasks
-        suggestions.append({
-            "name": "no_open_tasks",
-            "type": "context_check",
-            "field": "open_tasks",
-            "pass_when": "== 0",
-            "weight": 1.0,
-        })
+        suggestions.append(
+            {
+                "name": "no_open_tasks",
+                "type": "context_check",
+                "field": "open_tasks",
+                "pass_when": "== 0",
+                "weight": 1.0,
+            }
+        )
 
         # Detect test-related soul purposes
         test_keywords = {"test", "tests", "testing", "tdd", "coverage", "spec"}
         if any(kw in soul_purpose.lower() for kw in test_keywords):
-            suggestions.append({
-                "name": "tests_pass",
-                "type": "shell",
-                "command": _guess_test_command(project_signals),
-                "pass_when": "exit_code == 0",
-                "weight": 2.0,
-            })
+            suggestions.append(
+                {
+                    "name": "tests_pass",
+                    "type": "shell",
+                    "command": _guess_test_command(project_signals),
+                    "pass_when": "exit_code == 0",
+                    "weight": 2.0,
+                }
+            )
 
         # Detect build/deploy soul purposes
         build_keywords = {"build", "deploy", "compile", "bundle"}
         if any(kw in soul_purpose.lower() for kw in build_keywords):
-            suggestions.append({
-                "name": "build_succeeds",
-                "type": "shell",
-                "command": _guess_build_command(project_signals),
-                "pass_when": "exit_code == 0",
-                "weight": 2.0,
-            })
+            suggestions.append(
+                {
+                    "name": "build_succeeds",
+                    "type": "shell",
+                    "command": _guess_build_command(project_signals),
+                    "pass_when": "exit_code == 0",
+                    "weight": 2.0,
+                }
+            )
 
         # If project has detected stack, suggest lint
         if project_signals and project_signals.get("detected_stack"):
-            suggestions.append({
-                "name": "lint_clean",
-                "type": "shell",
-                "command": _guess_lint_command(project_signals),
-                "pass_when": "exit_code == 0",
-                "weight": 0.5,
-            })
+            suggestions.append(
+                {
+                    "name": "lint_clean",
+                    "type": "shell",
+                    "command": _guess_lint_command(project_signals),
+                    "pass_when": "exit_code == 0",
+                    "weight": 0.5,
+                }
+            )
 
         # Session context must exist
-        suggestions.append({
-            "name": "session_context_exists",
-            "type": "file_exists",
-            "path": "session-context/CLAUDE-activeContext.md",
-            "pass_when": "not_empty",
-            "weight": 0.5,
-        })
+        suggestions.append(
+            {
+                "name": "session_context_exists",
+                "type": "file_exists",
+                "path": "session-context/CLAUDE-activeContext.md",
+                "pass_when": "not_empty",
+                "weight": 0.5,
+            }
+        )
 
         return {
             "suggested_criteria": suggestions,
             "soul_purpose": soul_purpose,
-            "note": "Review and modify criteria before creating contract. Remove inapplicable criteria and adjust commands for your project.",
+            "note": (
+                "Review and modify criteria before creating contract. "
+                "Remove inapplicable criteria and adjust commands for your project."
+            ),
         }
 
 

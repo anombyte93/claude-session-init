@@ -74,6 +74,17 @@ Triggered when `session-context/` already exists.
 - Presents lifecycle decision: **Continue**, **Close**, or **Redefine** soul purpose
 - Harvests durable knowledge on closure -- promotes decisions, patterns, and troubleshooting entries
 
+### Capability Inventory
+
+When `/start` runs in Reconcile mode (or when you run `/sync --full`), it generates a comprehensive capability inventory:
+
+- **MCP Tools**: All available tools with test coverage status
+- **Security Claims**: Security-related features needing verification
+- **Feature Claims**: What the project claims vs what's tested
+- **Test Gaps**: Untested code identified by priority
+
+The inventory lives in `session-context/CLAUDE-capability-inventory.md` and is used by `/research-before-coding` to identify what needs validation testing. Results are cached based on git HEAD, so regeneration only happens when your code changes.
+
 ### Stepback (bundled skill)
 
 Also included: `/stepback` -- a strategic reassessment protocol for when debugging goes sideways. If you've hit the same error after 2+ fix attempts, `/stepback` forces you to zoom out:

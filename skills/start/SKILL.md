@@ -41,14 +41,9 @@ The skill NEVER finishes with "ready to go" and stops. After setup, immediately 
 
 > Triggered when `session_preflight` returns `"mode": "init"`.
 
-## Step 1: Preflight + Ralph Questions
+## Step 1: Preflight
 
 1. Call `session_preflight(project_dir)` — get mode, git status, project signals, template validity.
-
-2. **In parallel** with preflight, ask the user Ralph questions via AskUserQuestion:
-   - **Question 1**: "How should Ralph Loop work?" — Options: "Automatic", "Manual", "Skip"
-   - **Question 2** (only if Ralph = Automatic): "What intensity?" — Options: "Small (5 iterations)", "Medium (20 iterations)", "Long (100 iterations + PRD)"
-   - Store as `RALPH_MODE`, `RALPH_INTENSITY`.
 
 ## Step 2: Classify Brainstorm + File Organization
 
@@ -64,8 +59,8 @@ Call `session_check_clutter(project_dir)`. If `status` is "cluttered", present t
 
 ## Step 3: Silent Bootstrap
 
-1. Call `session_init(project_dir, DIRECTIVE_OR_PENDING, RALPH_MODE, RALPH_INTENSITY)`
-2. Call `session_ensure_governance(project_dir, RALPH_MODE, RALPH_INTENSITY)`
+1. Call `session_init(project_dir, DIRECTIVE_OR_PENDING)`
+2. Call `session_ensure_governance(project_dir)`
 3. Call `session_cache_governance(project_dir)`
 4. Run `/init` (Claude Code built-in — refreshes CLAUDE.md. Must run in main thread.)
 5. Call `session_restore_governance(project_dir)`
@@ -90,7 +85,7 @@ After brainstorm completes:
 
 Call `contract_health()`. If healthy, call `contract_create(project_dir, DERIVED_SOUL_PURPOSE, escrow, criteria)` using `contract_draft_criteria` for suggestions.
 
-Escrow by Ralph intensity: skip=50, small=100, medium=200, long=500.
+Default escrow: 100. Increase for complex soul purposes at AI's discretion.
 
 If AtlasCoin is down, tell user and continue without bounty.
 
@@ -108,13 +103,13 @@ If AtlasCoin is down, tell user and continue without bounty.
 
 ### Ralph Loop Invocation
 
-When `RALPH_MODE = "automatic"`, call the `Skill` tool:
+After brainstorm and activation, invoke `/ralph-go` with the derived soul purpose:
 
-| Intensity | Invocation |
-|-----------|-----------|
-| **Small** | `skill: "ralph-wiggum:ralph-loop"`, `args: "SOUL_PURPOSE --max-iterations 5 --completion-promise 'Soul purpose fulfilled'"` |
-| **Medium** | `skill: "ralph-wiggum:ralph-loop"`, `args: "SOUL_PURPOSE --max-iterations 20 --completion-promise 'Soul purpose fulfilled and code tested'"` |
-| **Long** | First `skill: "prd-taskmaster"`, args: SOUL_PURPOSE. Then `skill: "ralph-wiggum:ralph-loop"`, `args: "SOUL_PURPOSE --max-iterations 100 --completion-promise 'Must validate with 3x doubt agents and 1x finality agent'"` |
+```
+Skill(skill: "ralph-go", args: "DERIVED_SOUL_PURPOSE")
+```
+
+`/ralph-go` handles its own questions (deliverable type, done criteria, size), runs research, calibrates iterations, and launches the loop. No additional configuration needed from `/start`.
 
 **CRITICAL**: You must call the `Skill` tool — not just mention it in text.
 
@@ -126,6 +121,13 @@ When `RALPH_MODE = "automatic"`, call the `Skill` tool:
 >
 > **UX**: Everything in Steps 1-2 is invisible to the user. First visible interaction is a question (Step 3) or seamless work continuation (Step 4).
 
+## Step 0: Sync Previous State
+
+Before any assessment, save the current session state so context files reflect reality:
+
+1. Invoke `/sync` — updates all session-context files and MEMORY.md with current progress.
+2. This is silent — no output shown to user.
+
 ## Step 1: Silent Assessment + Context Reality Check
 
 1. Call `session_validate(project_dir)` — repair any missing session files.
@@ -135,8 +137,12 @@ When `RALPH_MODE = "automatic"`, call the `Skill` tool:
 5. Call `session_read_context(project_dir)` — get soul purpose, open tasks, Ralph config, status hint.
 6. Call `session_git_summary(project_dir)` — get recent commits, changed files, branch state.
 7. **Compare** `read_context` against `git_summary`: if context is stale (commits exist that aren't reflected in active context), update `session-context/CLAUDE-activeContext.md` with real progress.
-8. Check bounty: if `session-context/BOUNTY_ID.txt` exists, call `contract_get_status(project_dir)`.
-9. Read `custom.md` if it exists, follow instructions under "During Reconcile".
+8. Check capability inventory: call `session_capability_inventory(project_dir)`.
+   - If `cache_hit == True` and `git_changed == False`: inventory is current.
+   - If `needs_generation == True`: inventory requires generation. The MCP tool returns `inventory_path` when ready.
+9. Read `CLAUDE-capability-inventory.md` if it exists. Extract untested code, security claims, and feature claims with gaps.
+10. Check bounty: if `session-context/BOUNTY_ID.txt` exists, call `contract_get_status(project_dir)`.
+11. Read `custom.md` if it exists, follow instructions under "During Reconcile".
 
 ### Root Cleanup
 
@@ -194,13 +200,17 @@ Transition directly into work. No "session reconciled" message.
 
 ### Ralph Loop Invocation (Reconcile)
 
-When `ralph_mode` from `read_context` is "automatic":
+Check if a Ralph Loop is already active:
 
 ```bash
 test -f ~/.claude/ralph-loop.local.md && echo "active" || echo "inactive"
 ```
 
-If inactive, invoke Ralph Loop using the same intensity table as Init mode.
+If inactive, invoke `/ralph-go` with the soul purpose:
+
+```
+Skill(skill: "ralph-go", args: "SOUL_PURPOSE")
+```
 
 ---
 

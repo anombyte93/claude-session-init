@@ -127,3 +127,16 @@ def register(mcp: FastMCP) -> None:
         Deterministic — no comparison or judgment. AI compares against
         read_context to detect stale context."""
         return ops.git_summary(project_dir)
+
+    @mcp.tool
+    def session_capability_inventory(
+        project_dir: str,
+        force_refresh: bool = False,
+    ) -> dict:
+        """Returns cached inventory if git HEAD unchanged, otherwise signals
+        that full codebase analysis is needed. Triggers Explore agent for
+        capability mapping: MCP tools, tests, security claims, feature claims.
+        For use with /research-before-coding validation. Returns dict with
+        cache status; if needs_generation=True, caller should spawn Explore
+        agent to generate CLAUDE-capability-inventory.md."""
+        return ops.capability_inventory(project_dir, force_refresh)

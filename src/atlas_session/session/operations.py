@@ -3,6 +3,9 @@
 Extracted from session-init.py — all logic preserved, adapted to be
 called as functions (not CLI subcommands) returning dicts instead of
 printing JSON.
+
+SECURITY: All project_dir parameters are resolved and validated to
+prevent path traversal attacks.
 """
 
 import json
@@ -26,10 +29,34 @@ from ..common.state import (
     session_dir,
 )
 
+# Capability inventory cache constants
+CAPABILITY_CACHE_FILENAME = ".capability-cache.json"
+CAPABILITY_INVENTORY_FILENAME = "CLAUDE-capability-inventory.md"
+
+
+def _resolve_project_dir(project_dir: str) -> Path:
+    """Resolve and validate project_dir to prevent path traversal.
+
+    Returns:
+        Resolved absolute Path object
+
+    Raises:
+        ValueError: If resolved path is outside home directory or /tmp.
+    """
+    path = Path(project_dir).resolve()
+
+    home = Path.home().resolve()
+    tmp = Path("/tmp").resolve()
+    if not (str(path).startswith(str(home)) or str(path).startswith(str(tmp))):
+        raise ValueError(f"Project directory must be under home or /tmp: {path}")
+
+    return path
+
 
 # ---------------------------------------------------------------------------
 # preflight
 # ---------------------------------------------------------------------------
+
 
 def preflight(project_dir: str) -> dict:
     """Detect environment, return structured data."""
@@ -51,17 +78,16 @@ def preflight(project_dir: str) -> dict:
     try:
         subprocess.run(
             ["git", "rev-parse", "--git-dir"],
-            capture_output=True, check=True, cwd=project_dir,
+            capture_output=True,
+            check=True,
+            cwd=project_dir,
         )
         result["is_git"] = True
     except (subprocess.CalledProcessError, FileNotFoundError):
         pass
 
     # Root file count
-    root_files = [
-        f for f in root.iterdir()
-        if f.is_file() and not f.name.startswith("CLAUDE")
-    ]
+    root_files = [f for f in root.iterdir() if f.is_file() and not f.name.startswith("CLAUDE")]
     result["root_file_count"] = len(root_files)
 
     # Project signals
@@ -109,10 +135,7 @@ def _detect_project_signals(root: Path, root_files: list[Path]) -> dict:
         signals["has_readme"] = True
         try:
             lines = readme.read_text(errors="replace").split("\n")
-            content_lines = [
-                ln.strip() for ln in lines
-                if ln.strip() and not ln.strip().startswith("#")
-            ][:3]
+            content_lines = [ln.strip() for ln in lines if ln.strip() and not ln.strip().startswith("#")][:3]
             signals["readme_excerpt"] = " ".join(content_lines)[:200]
         except Exception:
             pass
@@ -159,17 +182,32 @@ def _detect_project_signals(root: Path, root_files: list[Path]) -> dict:
         except PermissionError:
             pass
 
+    # CI provider detection
+    ci_indicators = [
+        (root / ".github" / "workflows", "github-actions"),
+        (root / ".gitlab-ci.yml", "gitlab-ci"),
+        (root / "Jenkinsfile", "jenkins"),
+        (root / ".circleci", "circleci"),
+    ]
+    signals["has_ci"] = False
+    signals["ci_provider"] = ""
+    for ci_path, provider in ci_indicators:
+        if ci_path.exists():
+            signals["has_ci"] = True
+            signals["ci_provider"] = provider
+            break
+
     # Empty project detection
-    has_manifests = any([
-        signals["has_readme"], signals["has_package_json"],
-        signals["has_pyproject"], signals["has_cargo_toml"],
-        signals["has_go_mod"],
-    ])
-    signals["is_empty_project"] = (
-        not signals["has_code_files"]
-        and not has_manifests
-        and len(root_files) <= 2
+    has_manifests = any(
+        [
+            signals["has_readme"],
+            signals["has_package_json"],
+            signals["has_pyproject"],
+            signals["has_cargo_toml"],
+            signals["has_go_mod"],
+        ]
     )
+    signals["is_empty_project"] = not signals["has_code_files"] and not has_manifests and len(root_files) <= 2
 
     return signals
 
@@ -177,6 +215,7 @@ def _detect_project_signals(root: Path, root_files: list[Path]) -> dict:
 # ---------------------------------------------------------------------------
 # init
 # ---------------------------------------------------------------------------
+
 
 def init(
     project_dir: str,
@@ -250,6 +289,7 @@ def init(
 # validate
 # ---------------------------------------------------------------------------
 
+
 def validate(project_dir: str) -> dict:
     """Validate session-context files, repair from templates if needed."""
     sd = session_dir(project_dir)
@@ -277,6 +317,7 @@ def validate(project_dir: str) -> dict:
 # ---------------------------------------------------------------------------
 # cache_governance
 # ---------------------------------------------------------------------------
+
 
 def cache_governance(project_dir: str) -> dict:
     """Extract governance sections from CLAUDE.md, save to temp cache."""
@@ -307,6 +348,7 @@ def cache_governance(project_dir: str) -> dict:
 # ---------------------------------------------------------------------------
 # restore_governance
 # ---------------------------------------------------------------------------
+
 
 def restore_governance(project_dir: str) -> dict:
     """Restore governance sections to CLAUDE.md from cache."""
@@ -348,6 +390,7 @@ def restore_governance(project_dir: str) -> dict:
 # ---------------------------------------------------------------------------
 # ensure_governance
 # ---------------------------------------------------------------------------
+
 
 def ensure_governance(
     project_dir: str,
@@ -392,6 +435,7 @@ def ensure_governance(
 # read_context
 # ---------------------------------------------------------------------------
 
+
 def read_context(project_dir: str) -> dict:
     """Read soul purpose + active context, return structured summary."""
     sd = session_dir(project_dir)
@@ -411,7 +455,7 @@ def read_context(project_dir: str) -> dict:
     # Read soul purpose
     sp_file = sd / "CLAUDE-soul-purpose.md"
     if sp_file.is_file():
-        sp_content = sp_file.read_text()
+        sp_content = sp_file.read_text(errors="replace")
         lines = sp_content.split("\n")
         purpose_lines: list[str] = []
         for line in lines:
@@ -427,14 +471,14 @@ def read_context(project_dir: str) -> dict:
                 purpose_lines.append(line.strip())
         result["soul_purpose"] = " ".join(purpose_lines).strip()
 
-        if "(No active soul purpose)" in sp_content or not result["soul_purpose"]:
+        if "(No active soul purpose)" in result["soul_purpose"] or not result["soul_purpose"]:
             result["soul_purpose"] = ""
             result["status_hint"] = "no_purpose"
 
     # Read active context (first 60 lines)
     ac_file = sd / "CLAUDE-activeContext.md"
     if ac_file.is_file():
-        ac_content = ac_file.read_text()
+        ac_content = ac_file.read_text(errors="replace")
         ac_lines = ac_content.split("\n")[:60]
         result["active_context_summary"] = "\n".join(ac_lines)
 
@@ -463,6 +507,7 @@ def read_context(project_dir: str) -> dict:
 # ---------------------------------------------------------------------------
 # harvest
 # ---------------------------------------------------------------------------
+
 
 def harvest(project_dir: str) -> dict:
     """Scan active context for promotable content."""
@@ -493,6 +538,7 @@ def harvest(project_dir: str) -> dict:
 # archive
 # ---------------------------------------------------------------------------
 
+
 def archive(
     project_dir: str,
     old_purpose: str,
@@ -516,10 +562,10 @@ def archive(
 
     # Preserve existing [CLOSED] entries
     if "[CLOSED]" in existing:
-        for line in existing.split("\n"):
+        lines = existing.split("\n")
+        for i, line in enumerate(lines):
             if "[CLOSED]" in line:
-                idx = existing.index(line)
-                old_archives = existing[idx:]
+                old_archives = "\n".join(lines[i:])
                 new_content = new_content.rstrip() + f"\n\n{old_archives}\n"
                 break
 
@@ -546,38 +592,104 @@ def archive(
 # ---------------------------------------------------------------------------
 
 ROOT_WHITELIST_EXACT = {
-    "claude.md", "readme.md", "license", "license.md", "cname",
-    "package.json", "package-lock.json", "yarn.lock", "pnpm-lock.yaml",
-    "tsconfig.json", "jsconfig.json", "next.config.js", "next.config.mjs",
-    "next.config.ts", "next-env.d.ts", "vercel.json", "netlify.toml",
-    "middleware.ts", "middleware.js", "instrumentation.ts",
-    "tailwind.config.js", "tailwind.config.ts", "tailwind.config.mjs",
-    "postcss.config.js", "postcss.config.mjs", "postcss.config.cjs",
-    "eslint.config.js", "eslint.config.mjs", ".eslintrc.js", ".eslintrc.json",
-    ".prettierrc", ".prettierrc.json", ".prettierrc.js",
-    "dockerfile", "docker-compose.yml", "docker-compose.yaml",
-    ".dockerignore", ".gitignore", ".gitattributes", ".editorconfig",
-    "makefile", "rakefile", "gemfile", "gemfile.lock",
-    "pyproject.toml", "setup.py", "setup.cfg", "requirements.txt",
-    "cargo.toml", "cargo.lock", "go.mod", "go.sum",
-    "sanity.config.ts", "sanity.config.js", "sanity.cli.ts", "sanity.cli.js",
-    "drizzle.config.ts", "drizzle.config.js",
-    "vitest.config.ts", "vitest.config.js", "jest.config.ts", "jest.config.js",
-    "playwright.config.ts", "playwright.config.js",
-    "index.html", "robots.txt", "sitemap.xml",
+    "claude.md",
+    "readme.md",
+    "license",
+    "license.md",
+    "cname",
+    "package.json",
+    "package-lock.json",
+    "yarn.lock",
+    "pnpm-lock.yaml",
+    "tsconfig.json",
+    "jsconfig.json",
+    "next.config.js",
+    "next.config.mjs",
+    "next.config.ts",
+    "next-env.d.ts",
+    "vercel.json",
+    "netlify.toml",
+    "middleware.ts",
+    "middleware.js",
+    "instrumentation.ts",
+    "tailwind.config.js",
+    "tailwind.config.ts",
+    "tailwind.config.mjs",
+    "postcss.config.js",
+    "postcss.config.mjs",
+    "postcss.config.cjs",
+    "eslint.config.js",
+    "eslint.config.mjs",
+    ".eslintrc.js",
+    ".eslintrc.json",
+    ".prettierrc",
+    ".prettierrc.json",
+    ".prettierrc.js",
+    "dockerfile",
+    "docker-compose.yml",
+    "docker-compose.yaml",
+    ".dockerignore",
+    ".gitignore",
+    ".gitattributes",
+    ".editorconfig",
+    "makefile",
+    "rakefile",
+    "gemfile",
+    "gemfile.lock",
+    "pyproject.toml",
+    "setup.py",
+    "setup.cfg",
+    "requirements.txt",
+    "cargo.toml",
+    "cargo.lock",
+    "go.mod",
+    "go.sum",
+    "sanity.config.ts",
+    "sanity.config.js",
+    "sanity.cli.ts",
+    "sanity.cli.js",
+    "drizzle.config.ts",
+    "drizzle.config.js",
+    "vitest.config.ts",
+    "vitest.config.js",
+    "jest.config.ts",
+    "jest.config.js",
+    "playwright.config.ts",
+    "playwright.config.js",
+    "index.html",
+    "robots.txt",
+    "sitemap.xml",
     "components.json",
-    "railway.toml", "fly.toml", "render.yaml", "app.yaml",
-    "turbo.json", "nx.json", "lerna.json", "pnpm-workspace.yaml",
-    "vitest.setup.ts", "vitest.setup.js", "jest.setup.ts", "jest.setup.js",
+    "railway.toml",
+    "fly.toml",
+    "render.yaml",
+    "app.yaml",
+    "turbo.json",
+    "nx.json",
+    "lerna.json",
+    "pnpm-workspace.yaml",
+    "vitest.setup.ts",
+    "vitest.setup.js",
+    "jest.setup.ts",
+    "jest.setup.js",
     "tsconfig.tsbuildinfo",
-    "commitlint.config.js", "lint-staged.config.js", ".lintstagedrc",
-    ".husky", ".changeset",
-    "biome.json", "deno.json", "bun.lockb",
+    "commitlint.config.js",
+    "lint-staged.config.js",
+    ".lintstagedrc",
+    ".husky",
+    ".changeset",
+    "biome.json",
+    "deno.json",
+    "bun.lockb",
 }
 
 ROOT_WHITELIST_PATTERNS = [
-    ".env", ".npmrc", ".nvmrc", ".node-version",
-    ".python-version", ".tool-versions",
+    ".env",
+    ".npmrc",
+    ".nvmrc",
+    ".node-version",
+    ".python-version",
+    ".tool-versions",
 ]
 
 CLUTTER_CATEGORIES = [
@@ -614,10 +726,7 @@ def _categorize_file(filename: str) -> tuple[str | None, str]:
 def check_clutter(project_dir: str) -> dict:
     """Scan root directory for files that violate structure rules."""
     root = Path(project_dir)
-    root_files = sorted(
-        f for f in root.iterdir()
-        if f.is_file() and not f.name.startswith("CLAUDE")
-    )
+    root_files = sorted(f for f in root.iterdir() if f.is_file() and not f.name.startswith("CLAUDE"))
 
     clutter: list[dict] = []
     whitelisted: list[str] = []
@@ -633,11 +742,13 @@ def check_clutter(project_dir: str) -> dict:
         if target_dir is None:
             deletable.append({"file": name, "category": category})
         else:
-            clutter.append({
-                "file": name,
-                "target": f"{target_dir}/{name}",
-                "category": category,
-            })
+            clutter.append(
+                {
+                    "file": name,
+                    "target": f"{target_dir}/{name}",
+                    "category": category,
+                }
+            )
 
     moves_by_dir: dict[str, list[str]] = {}
     for item in clutter:
@@ -667,6 +778,7 @@ def check_clutter(project_dir: str) -> dict:
 # classify_brainstorm
 # ---------------------------------------------------------------------------
 
+
 def classify_brainstorm(directive: str, project_signals: dict) -> dict:
     """Deterministic brainstorm weight classification.
 
@@ -677,6 +789,8 @@ def classify_brainstorm(directive: str, project_signals: dict) -> dict:
     - no directive + empty project → full
     """
     has_directive = len(directive.split()) >= 3
+    if project_signals is None:
+        project_signals = {}
     has_content = (
         project_signals.get("has_readme", False)
         or project_signals.get("has_code_files", False)
@@ -706,6 +820,7 @@ def classify_brainstorm(directive: str, project_signals: dict) -> dict:
 # hook_activate
 # ---------------------------------------------------------------------------
 
+
 def hook_activate(project_dir: str, soul_purpose: str) -> dict:
     """Write lifecycle state to session-context/.lifecycle-active.json.
 
@@ -733,6 +848,7 @@ def hook_activate(project_dir: str, soul_purpose: str) -> dict:
 # hook_deactivate
 # ---------------------------------------------------------------------------
 
+
 def hook_deactivate(project_dir: str) -> dict:
     """Remove lifecycle state file. Idempotent."""
     sd = session_dir(project_dir)
@@ -748,6 +864,7 @@ def hook_deactivate(project_dir: str) -> dict:
 # ---------------------------------------------------------------------------
 # features_read
 # ---------------------------------------------------------------------------
+
 
 def features_read(project_dir: str) -> dict:
     """Parse CLAUDE-features.md into structured claims by status.
@@ -803,6 +920,7 @@ def features_read(project_dir: str) -> dict:
 # git_summary
 # ---------------------------------------------------------------------------
 
+
 def git_summary(project_dir: str) -> dict:
     """Raw git data: recent commits, changed files, branch, ahead/behind.
 
@@ -821,7 +939,10 @@ def git_summary(project_dir: str) -> dict:
     def _run(args: list[str]) -> str | None:
         try:
             proc = subprocess.run(
-                args, capture_output=True, text=True, cwd=project_dir,
+                args,
+                capture_output=True,
+                text=True,
+                cwd=project_dir,
                 timeout=10,
             )
             return proc.stdout.strip() if proc.returncode == 0 else None
@@ -839,9 +960,15 @@ def git_summary(project_dir: str) -> dict:
         result["branch"] = branch
 
     # Recent commits (last 10)
-    log_output = _run([
-        "git", "log", "--oneline", "--no-decorate", "-10",
-    ])
+    log_output = _run(
+        [
+            "git",
+            "log",
+            "--oneline",
+            "--no-decorate",
+            "-10",
+        ]
+    )
     if log_output:
         result["commits"] = [
             {"hash": line.split(" ", 1)[0], "message": line.split(" ", 1)[1] if " " in line else ""}
@@ -853,18 +980,143 @@ def git_summary(project_dir: str) -> dict:
     status_output = _run(["git", "status", "--porcelain"])
     if status_output:
         result["files_changed"] = [
-            {"status": line[:2].strip(), "file": line[3:]}
-            for line in status_output.split("\n")
-            if line.strip()
+            {"status": line[:2].strip(), "file": line[3:]} for line in status_output.split("\n") if line.strip()
         ]
 
     # Ahead/behind tracking branch
-    tracking = _run([
-        "git", "rev-list", "--left-right", "--count", "HEAD...@{upstream}",
-    ])
+    tracking = _run(
+        [
+            "git",
+            "rev-list",
+            "--left-right",
+            "--count",
+            "HEAD...@{upstream}",
+        ]
+    )
     if tracking and "\t" in tracking:
         parts = tracking.split("\t")
         result["ahead"] = int(parts[0])
         result["behind"] = int(parts[1])
 
     return result
+
+
+# ---------------------------------------------------------------------------
+# capability_inventory
+# ---------------------------------------------------------------------------
+
+
+def _get_git_head(project_dir: str) -> str | None:
+    """Get current git HEAD commit hash.
+
+    Returns:
+        Commit hash as string, or None if not a git repo or command fails.
+    """
+    try:
+        proc = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            cwd=project_dir,
+            timeout=10,
+        )
+        if proc.returncode == 0:
+            return proc.stdout.strip()
+    except (subprocess.SubprocessError, FileNotFoundError):
+        pass
+    return None
+
+
+def _get_capability_cache_path(project_dir: str) -> Path:
+    """Get path to capability cache file.
+
+    Returns:
+        Path object for session-context/.capability-cache.json
+    """
+    return session_dir(project_dir) / CAPABILITY_CACHE_FILENAME
+
+
+def _load_capability_cache(project_dir: str) -> dict | None:
+    """Load capability cache from disk.
+
+    Returns:
+        Cached data dict, or None if file doesn't exist or invalid JSON.
+    """
+    cache_path = _get_capability_cache_path(project_dir)
+    if not cache_path.is_file():
+        return None
+
+    try:
+        content = cache_path.read_text()
+        return json.loads(content)
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def _save_capability_cache(project_dir: str, data: dict) -> None:
+    """Save capability cache to disk.
+
+    Args:
+        project_dir: Project directory path
+        data: Cache data to write as indented JSON
+    """
+    cache_path = _get_capability_cache_path(project_dir)
+    cache_path.parent.mkdir(exist_ok=True)
+    cache_path.write_text(json.dumps(data, indent=2))
+
+
+def capability_inventory(project_dir: str, force_refresh: bool = False) -> dict:
+    """Manage capability inventory cache with git-aware invalidation.
+
+    The cache stores metadata about the capability inventory file and is
+    invalidated when the git HEAD changes, ensuring freshness after commits.
+
+    Args:
+        project_dir: Project directory path
+        force_refresh: If True, bypass cache and force regeneration
+
+    Returns:
+        Dict with:
+            - status: "ok"
+            - cache_hit: bool (True if cache was valid and used)
+            - is_git: bool (True if project is a git repo)
+            - git_head: str | None (current commit hash)
+            - git_changed: bool (True if HEAD changed since cache)
+            - inventory_file: str (relative path to inventory file)
+            - needs_generation: bool (True if inventory should be regenerated)
+    """
+    git_head = _get_git_head(project_dir)
+    is_git = git_head is not None
+
+    # Load existing cache if in git repo
+    cache = _load_capability_cache(project_dir) if is_git else None
+
+    cache_hit = False
+    git_changed = False
+    cached_head = None
+
+    if cache:
+        cached_head = cache.get("git_head")
+        cache_hit = cached_head == git_head and not force_refresh
+        git_changed = cached_head != git_head
+
+    # Save new cache entry if not hitting or forcing refresh (git repos only)
+    if is_git and (not cache_hit or force_refresh):
+        cache_data = {
+            "git_head": git_head,
+            "cached_at": datetime.now(timezone.utc).isoformat(),
+        }
+        _save_capability_cache(project_dir, cache_data)
+
+    # Relative path from session-context
+    inventory_file = f"session-context/{CAPABILITY_INVENTORY_FILENAME}"
+
+    return {
+        "status": "ok",
+        "cache_hit": cache_hit,
+        "is_git": is_git,
+        "git_head": git_head,
+        "git_changed": git_changed,
+        "inventory_file": inventory_file,
+        "needs_generation": not cache_hit or force_refresh,
+    }

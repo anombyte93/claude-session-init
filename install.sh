@@ -20,7 +20,10 @@ set -euo pipefail
 REPO_OWNER="anombyte93"
 REPO_NAME="atlas-session-lifecycle"
 SKILL_NAME="start"
-VERSION="2.0.0"
+VERSION="4.1.0"
+# SECURITY: Pin to specific commit hash for integrity
+# Update this when releasing new versions
+PINNED_COMMIT="8c4cbc5"
 SKILL_DIR="${SKILL_DIR:-${HOME}/.claude/skills/${SKILL_NAME}}"
 PLUGIN_DIR="${HOME}/.claude/plugins/${REPO_NAME}"
 TEMPLATE_DIR="${HOME}/claude-session-init-templates"
@@ -83,20 +86,33 @@ except: print('')
     fi
     local api_response; api_response=$(curl -fsSL --max-time 5 -H "Accept: application/vnd.github+json" "${GITHUB_API}" 2>/dev/null) || return 0
     local latest_version; latest_version=$(printf '%s' "${api_response}" | python3 -c "
-import json, sys
+import json, sys, re
 try:
-    data = json.load(sys.stdin); tag = data.get('tag_name', ''); print(tag.lstrip('v'))
+    data = json.load(sys.stdin)
+    tag = data.get('tag_name', '')
+    # SECURITY: Validate semver format to prevent code injection
+    if re.match(r'^v?\d+\.\d+\.\d+(-[a-zA-Z0-9.]+)?$', tag):
+        print(tag.lstrip('v'))
+    else:
+        print('')
 except: print('')
 " 2>/dev/null || echo "")
     if [[ -z "${latest_version}" ]]; then return 0; fi
+    # SECURITY: Validate version format before use
+    if [[ ! "${latest_version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then return 0; fi
     local now; now=$(date +%s)
+    # SECURITY: Use shlex.quote equivalent via printf escaping
     python3 -c "
-import json
-path = '${UPDATES_FILE}'
+import json, shlex
+path = shlex.quote('${UPDATES_FILE}')
+skill_name = shlex.quote('${SKILL_NAME}')
+now = ${now}
+latest = shlex.quote('${latest_version}')
+current = shlex.quote('${VERSION}')
 try: data = json.load(open(path))
 except: data = {}
 data.setdefault('skills', {})
-data['skills']['${SKILL_NAME}'] = {'last_check': ${now}, 'latest': '${latest_version}', 'current': '${VERSION}'}
+data['skills'][skill_name] = {'last_check': now, 'latest': latest, 'current': current}
 with open(path, 'w') as f: json.dump(data, f, indent=2)
 " 2>/dev/null || true
     if [[ "${latest_version}" != "${VERSION}" ]]; then
@@ -113,9 +129,11 @@ revert_to_v1() {
     fi
 
     TMPDIR_SKILL=$(mktemp -d "${TMPDIR:-/tmp}/claude-skill-XXXXXX")
-    info "Cloning ${REPO_OWNER}/${REPO_NAME}..."
-    git clone --depth 1 --quiet "${CLONE_URL}" "${TMPDIR_SKILL}/repo" 2>/dev/null \
+    info "Cloning ${REPO_OWNER}/${REPO_NAME} at ${PINNED_COMMIT}..."
+    git clone --quiet "${CLONE_URL}" "${TMPDIR_SKILL}/repo" 2>/dev/null \
         || die "Failed to clone repository."
+    git -C "${TMPDIR_SKILL}/repo" checkout --quiet "${PINNED_COMMIT}" 2>/dev/null \
+        || die "Failed to checkout pinned commit."
 
     local src_dir="${TMPDIR_SKILL}/repo"
 
@@ -326,9 +344,11 @@ install_skill() {
     else info "Mode: fresh install"; fi
 
     TMPDIR_SKILL=$(mktemp -d "${TMPDIR:-/tmp}/claude-skill-XXXXXX")
-    info "Cloning ${REPO_OWNER}/${REPO_NAME}..."
-    git clone --depth 1 --quiet "${CLONE_URL}" "${TMPDIR_SKILL}/repo" 2>/dev/null \
+    info "Cloning ${REPO_OWNER}/${REPO_NAME} at ${PINNED_COMMIT}..."
+    git clone --quiet "${CLONE_URL}" "${TMPDIR_SKILL}/repo" 2>/dev/null \
         || die "Failed to clone repository."
+    git -C "${TMPDIR_SKILL}/repo" checkout --quiet "${PINNED_COMMIT}" 2>/dev/null \
+        || die "Failed to checkout pinned commit."
 
     local src_dir="${TMPDIR_SKILL}/repo"
 
