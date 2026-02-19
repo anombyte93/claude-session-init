@@ -28,3 +28,31 @@ Thumbs.db
 
 # Session context (user-generated, not repo content)
 session-context/
+
+# Claude Code runtime artifacts
+.claude/
+.playwright-mcp/
+.taskmaster/
+
+# Internal process artifacts (never commit)
+chatGPTConvo*.md
+doubt*.md
+*-current.md
+docs/archive/
+
+# Nested clone — not a submodule, excluded intentionally
+atlas-session-lifecycle/
+
+# Phase 0 cleanup artifacts
+stop-skill-save-pause.patch
+
+# Business strategy docs (private)
+docs/market-strategy.md
+docs/competitive-landscape.md
+docs/COMPETITIVE-INDEX.md
+docs/unique-value-proposition.md
+docs/landing/
+docs/cline-submission/
+
+# Build artifacts
+src/dist/
