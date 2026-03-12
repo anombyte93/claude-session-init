@@ -6,7 +6,8 @@
 ## Current Session
 - **Started**: [DATE]
 - **Focus**: [Main task]
-- **Status**: [In Progress | Blocked | Complete]
+- **Session State**: [Active | Paused | Closing]
+- **Focus Status**: [In Progress | Blocked | Done | Moving To Next]
 
 ## Progress
 - [ ] [Task 1]

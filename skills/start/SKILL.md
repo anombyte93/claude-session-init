@@ -74,7 +74,7 @@ The skill NEVER finishes with "ready to go" and stops. After setup, immediately 
 
 ## Step 2: Brainstorm Weight + File Organization
 
-1. Extract `BRAINSTORM_WEIGHT` from `result["classify_brainstorm"]["weight"]` for Step 4.
+1. Extract `BRAINSTORM_WEIGHT` from `result["classify_brainstorm"]["weight"]` for Step 5.
 
 **File organization** (only if `result["clutter"]` is present and `status` is "cluttered"):
 
@@ -83,7 +83,68 @@ Present the grouped move map from `result["clutter"]`:
 - Options: "Yes, clean up", "Show details first", "Skip"
 - If approved, execute moves via `git mv` (if `is_git`) or file operations.
 
-## Step 3: Silent Bootstrap + CI/CD Detection
+## Step 3: Chezmoi Tracking
+
+Ensure project artifacts deployed to `~/.claude/` are tracked by chezmoi. Untracked = invisible to chezmoi = lost on machine rebuild.
+
+**Guard first**: check `command -v chezmoi`. If chezmoi is not installed, skip this entire step silently and continue to Step 4.
+
+Also skip this step if the project has no `skills/` directory (nothing to track for non-skill projects).
+
+### 3a. Detect Installed Artifacts
+
+Scan for deployed files that chezmoi should own:
+
+1. **Skills**: for each `skills/<name>/` directory in this project:
+   - Target: `~/.claude/skills/<name>/SKILL.md`
+   - If that file exists on disk → candidate for tracking
+
+2. **Python backend**: if `scripts/session-init.py` exists in this project:
+   - Target: `~/.claude/skills/start/session-init.py`
+   - If that file exists on disk → candidate for tracking
+
+3. **MCP server code**: if the directory `~/.claude/skills/start/src/` exists on disk:
+   - Target: `~/.claude/skills/start/src/` (entire directory)
+   - If that directory exists on disk → candidate for tracking
+
+Skip any file or directory that doesn't exist on disk (not yet installed).
+
+### 3b. Check + Add
+
+For each candidate artifact, check if chezmoi manages it:
+
+```bash
+# Check if managed (exits 0 with a match if tracked; no output if not tracked)
+chezmoi managed --include files --path-style absolute | grep -qF "$target_path"
+```
+
+- **Not in managed list** → untracked: run `chezmoi add "$target_path"`
+- **In managed list** → tracked: run `chezmoi status "$target_path"` and check the output:
+  - Any non-whitespace output (e.g. `MM`, ` M`, `M `) → **drift**: add to drift list, do NOT auto-apply
+  - Empty output (exit 0, no output) → **clean**: skip
+
+For a directory target (e.g. `~/.claude/skills/start/src/`), use `chezmoi add` on the directory — it recurses by default.
+
+### 3c. Commit if anything was added
+
+If any `chezmoi add` calls were made:
+
+```bash
+# project_dir is the absolute path to the current project (e.g. $(pwd) at init start)
+chezmoi git -- add -A
+chezmoi git -- commit -m "track: $(basename "$project_dir") skill artifacts"
+```
+
+`$project_dir` is the absolute project path established at init start (the directory Claude Code was invoked from). Use `basename` to extract just the folder name (e.g. `Soul_Purpose_Skill` from `/home/user/projects/Soul_Purpose_Skill`).
+
+### 3d. Drift notification (if drift found)
+
+If any tracked files showed non-empty output from `chezmoi status`:
+> "Chezmoi drift detected in [list of files]. Run /chezmoi-drift-cleanup when ready."
+
+Do NOT block init. Continue to Step 4.
+
+## Step 4: Silent Bootstrap + CI/CD Detection
 
 1. Call `session_init(project_dir, DIRECTIVE_OR_PENDING)`
 2. Call `session_ensure_governance(project_dir)`
@@ -137,7 +198,7 @@ Use language-specific defaults:
 
 6. Read `custom.md` if it exists, follow instructions under "During Init".
 
-## Step 4: Quick Clarify + Activate + Continuation
+## Step 5: Quick Clarify + Activate + Continuation
 
 **Quick Clarify runs first (always)**:
 
@@ -381,7 +442,7 @@ Read `custom.md` if it exists, follow instructions under "During Settlement".
 > Create or edit `custom.md` in the plugin root directory.
 
 The AI reads `custom.md` at each lifecycle phase:
-- **During Init**: After session-context is bootstrapped (Step 3)
+- **During Init**: After session-context is bootstrapped (Step 4)
 - **During Reconcile**: After read-context, before assessment (Step 1)
 - **During Settlement**: Before harvest + archive (Settlement Step 1)
 - **Always**: Applied in all modes
