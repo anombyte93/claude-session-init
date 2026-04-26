@@ -450,6 +450,8 @@ def read_context(project_dir: str) -> dict:
         "status_hint": "unknown",
         "ralph_mode": "",
         "ralph_intensity": "",
+        "session_state": None,  # NEW: Active | Paused | Closing
+        "focus_status": None,  # NEW: In Progress | Blocked | Done | Moving To Next
     }
 
     # Read soul purpose
@@ -484,10 +486,47 @@ def read_context(project_dir: str) -> dict:
 
         for line in ac_content.split("\n"):
             stripped = line.strip()
-            if "[ ]" in stripped:
+            # Parse new fields (Session State, Focus Status)
+            if stripped.startswith("- **Session State**:") or "**Session State**:" in stripped:
+                for state in ["Active", "Paused", "Closing"]:
+                    if state in stripped:
+                        result["session_state"] = state.lower()
+            elif stripped.startswith("- **Focus Status**:") or "**Focus Status**:" in stripped:
+                for status in ["In Progress", "Blocked", "Done", "Moving To Next"]:
+                    if status in stripped:
+                        result["focus_status"] = status.lower().replace(" ", "_")
+            # Legacy "Status:" parsing for backward compatibility
+            elif stripped.startswith("- **Status**:"):
+                if "In Progress" in stripped:
+                    result["focus_status"] = "in_progress"
+                elif "Blocked" in stripped:
+                    result["focus_status"] = "blocked"
+                    result["status_hint"] = "blocked"
+                elif "Complete" in stripped:
+                    # Legacy "Complete" is ambiguous - interpret based on open_tasks
+                    if result.get("open_tasks"):
+                        result["focus_status"] = "done"
+                        result["status_hint"] = "moving_to_next"
+                    else:
+                        result["focus_status"] = "done"
+                        result["status_hint"] = "probably_complete"
+            # Parse tasks
+            elif "[ ]" in stripped:
                 result["open_tasks"].append(stripped.lstrip("- "))
             elif "[x]" in stripped.lower():
                 result["recent_progress"].append(stripped.lstrip("- "))
+
+        # Update status_hint based on new fields
+        if result["session_state"] == "closing":
+            result["status_hint"] = "closing"
+        elif result["focus_status"] == "blocked":
+            result["status_hint"] = "blocked"
+        elif result["focus_status"] == "done":
+            result["status_hint"] = "probably_complete"
+        elif result["focus_status"] == "moving_to_next":
+            result["status_hint"] = "moving_to_next"
+        elif result["open_tasks"]:
+            result["status_hint"] = "clearly_incomplete"
 
     # Extract ralph config from CLAUDE.md
     if cmd.is_file():
@@ -502,10 +541,6 @@ def read_context(project_dir: str) -> dict:
                     result["ralph_intensity"] = line.split("**Intensity**:")[1].strip()
 
     return result
-
-
-# ---------------------------------------------------------------------------
-# harvest
 # ---------------------------------------------------------------------------
 
 
